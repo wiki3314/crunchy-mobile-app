@@ -1,0 +1,46 @@
+{
+    "project_info": {
+      "project_number": "887856847210",
+      "project_id": "crunchy-349711",
+      "storage_bucket": "crunchy-349711.appspot.com"
+    },
+    "client": [
+      {
+        "client_info": {
+          "mobilesdk_app_id": "1:887856847210:android:bdafeeedfb7752d7a4ed13",
+          "android_client_info": {
+            "package_name": "com.crunchy"
+          }
+        },
+        "oauth_client": [
+          {
+            "client_id": "887856847210-ije9nsemfsp7v2mbolkjq4o18gnlncvv.apps.googleusercontent.com",
+            "client_type": 3
+          }
+        ],
+        "api_key": [
+          {
+            "current_key": "AIzaSyCGjSme_DUG76uDkB7OQ6HMJlVtsfcVfJg"
+          }
+        ],
+        "services": {
+          "appinvite_service": {
+            "other_platform_oauth_client": [
+              {
+                "client_id": "887856847210-ije9nsemfsp7v2mbolkjq4o18gnlncvv.apps.googleusercontent.com",
+                "client_type": 3
+              },
+              {
+                "client_id": "887856847210-br194482savpiontotn1d0kucuosbdct.apps.googleusercontent.com",
+                "client_type": 2,
+                "ios_info": {
+                  "bundle_id": "com.crunchy"
+                }
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "configuration_version": "1"
+  }

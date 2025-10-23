@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">Crunchii</string>
+       <string name="facebook_app_id">1151738705681447</string>
+        <string name="fb_login_protocol_scheme">fb1151738705681447</string>
+<string name="facebook_client_token">927c91f0989f7ea0d731812f3d6721eb</string>
+</resources>

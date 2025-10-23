@@ -1,0 +1,8 @@
+{
+  "name": "Crunchy",
+  "displayName": "Crunchy",
+  "react-native-google-mobile-ads": {
+    "android_app_id": "ca-app-pub-8426298054726789~4999581240",
+    "ios_app_id": "ca-app-pub-8426298054726789~7434172894"
+  }
+}

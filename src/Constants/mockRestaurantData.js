@@ -1,0 +1,147 @@
+// Mock restaurant data for development when Google API is not working
+// This is temporary data - replace with real Google API once billing is enabled
+
+export const mockRestaurants = [
+  {
+    restaurantName: "Joe's Pizza",
+    restaurantRating: 4.5,
+    restaurantPrice: 2,
+    restaurantImage: null,
+    restaurantTiming: { open_now: true },
+    restaurant_id: "MOCK_001",
+    isGoogle: true,
+    isMockData: true,
+  },
+  {
+    restaurantName: "The Burger Joint",
+    restaurantRating: 4.7,
+    restaurantPrice: 2,
+    restaurantImage: null,
+    restaurantTiming: { open_now: true },
+    restaurant_id: "MOCK_002",
+    isGoogle: true,
+    isMockData: true,
+  },
+  {
+    restaurantName: "Spicy Paradise Indian Cuisine",
+    restaurantRating: 4.8,
+    restaurantPrice: 3,
+    restaurantImage: null,
+    restaurantTiming: { open_now: true },
+    restaurant_id: "MOCK_003",
+    isGoogle: true,
+    isMockData: true,
+  },
+  {
+    restaurantName: "Mama's Italian Kitchen",
+    restaurantRating: 4.6,
+    restaurantPrice: 3,
+    restaurantImage: null,
+    restaurantTiming: { open_now: true },
+    restaurant_id: "MOCK_004",
+    isGoogle: true,
+    isMockData: true,
+  },
+  {
+    restaurantName: "Dragon Palace Chinese Restaurant",
+    restaurantRating: 4.3,
+    restaurantPrice: 2,
+    restaurantImage: null,
+    restaurantTiming: { open_now: true },
+    restaurant_id: "MOCK_005",
+    isGoogle: true,
+    isMockData: true,
+  },
+  {
+    restaurantName: "Taco Fiesta",
+    restaurantRating: 4.4,
+    restaurantPrice: 1,
+    restaurantImage: null,
+    restaurantTiming: { open_now: true },
+    restaurant_id: "MOCK_006",
+    isGoogle: true,
+    isMockData: true,
+  },
+  {
+    restaurantName: "Sushi Master",
+    restaurantRating: 4.9,
+    restaurantPrice: 4,
+    restaurantImage: null,
+    restaurantTiming: { open_now: true },
+    restaurant_id: "MOCK_007",
+    isGoogle: true,
+    isMockData: true,
+  },
+  {
+    restaurantName: "BBQ Heaven",
+    restaurantRating: 4.5,
+    restaurantPrice: 3,
+    restaurantImage: null,
+    restaurantTiming: { open_now: true },
+    restaurant_id: "MOCK_008",
+    isGoogle: true,
+    isMockData: true,
+  },
+  {
+    restaurantName: "Thai Basil",
+    restaurantRating: 4.6,
+    restaurantPrice: 2,
+    restaurantImage: null,
+    restaurantTiming: { open_now: true },
+    restaurant_id: "MOCK_009",
+    isGoogle: true,
+    isMockData: true,
+  },
+  {
+    restaurantName: "Mediterranean Grill",
+    restaurantRating: 4.7,
+    restaurantPrice: 3,
+    restaurantImage: null,
+    restaurantTiming: { open_now: true },
+    restaurant_id: "MOCK_010",
+    isGoogle: true,
+    isMockData: true,
+  },
+  {
+    restaurantName: "Breakfast Club",
+    restaurantRating: 4.4,
+    restaurantPrice: 2,
+    restaurantImage: null,
+    restaurantTiming: { open_now: true },
+    restaurant_id: "MOCK_011",
+    isGoogle: true,
+    isMockData: true,
+  },
+  {
+    restaurantName: "Steakhouse Prime",
+    restaurantRating: 4.8,
+    restaurantPrice: 4,
+    restaurantImage: null,
+    restaurantTiming: { open_now: true },
+    restaurant_id: "MOCK_012",
+    isGoogle: true,
+    isMockData: true,
+  },
+];
+
+// Function to get mock restaurants based on category
+export const getMockRestaurantsByCategory = (categoryName) => {
+  const categoryMap = {
+    Pizza: ["Joe's Pizza", "Mama's Italian Kitchen"],
+    Burgers: ["The Burger Joint", "BBQ Heaven"],
+    Chinese: ["Dragon Palace Chinese Restaurant"],
+    Mexican: ["Taco Fiesta"],
+    Japanese: ["Sushi Master"],
+    Italian: ["Mama's Italian Kitchen", "Joe's Pizza"],
+    Indian: ["Spicy Paradise Indian Cuisine"],
+    Thai: ["Thai Basil"],
+    Breakfast: ["Breakfast Club"],
+    Steakhouses: ["Steakhouse Prime"],
+    American: ["The Burger Joint", "BBQ Heaven", "Breakfast Club"],
+  };
+
+  const restaurantNames = categoryMap[categoryName] || [];
+  return mockRestaurants.filter((restaurant) =>
+    restaurantNames.includes(restaurant.restaurantName)
+  );
+};

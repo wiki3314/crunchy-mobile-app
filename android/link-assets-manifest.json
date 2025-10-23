@@ -1,0 +1,25 @@
+{
+  "migIndex": 1,
+  "data": [
+    {
+      "path": "assets/fonts/HarbourRegular.ttf",
+      "sha1": "da68992861cce8530e1a441b917b54c1ac2c900a"
+    },
+    {
+      "path": "assets/fonts/Roboto.ttf",
+      "sha1": "2094dc3e76a8e206c081e5ad494226caa4eaa81f"
+    },
+    {
+      "path": "assets/fonts/RobotoMono-Italic.ttf",
+      "sha1": "81406090efa17728912562a5e08b163f48a720ea"
+    },
+    {
+      "path": "assets/fonts/brandon-bold.otf",
+      "sha1": "a9b9dae4568883ef65d130a8237343185d463f2a"
+    },
+    {
+      "path": "assets/fonts/brandon-regular.otf",
+      "sha1": "e8acc9022336f58bb5ee2e2d4d98b51bebf45990"
+    }
+  ]
+}
