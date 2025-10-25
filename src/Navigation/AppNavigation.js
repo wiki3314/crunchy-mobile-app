@@ -29,6 +29,10 @@ const AppNavigation = (props) => {
   const current_session_id = useSelector((state) => state.current_session_id);
 
   useEffect(() => {
+    console.log(
+      "🔄 AppNavigation: accessToken changed:",
+      accessToken ? "✅ Token exists" : "❌ No token"
+    );
     getInitialData();
   }, [accessToken]);
 
@@ -153,6 +157,16 @@ const AppNavigation = (props) => {
       //handle errors
     }
   };
+
+  console.log("📱 AppNavigation rendering:", {
+    appLaunchedFromLink,
+    hasAccessToken: !!accessToken,
+    rendering: appLaunchedFromLink
+      ? "SharedLinkStack"
+      : accessToken
+      ? "MainNavigationStack"
+      : "AuthorizationStack",
+  });
 
   return appLaunchedFromLink ? (
     <SharedLinkStack />

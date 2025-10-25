@@ -53,6 +53,8 @@ import {
   Image as ImageCompressor,
   Video as VideoCompressor,
 } from "react-native-compressor";
+import { mockRestaurants } from "../Constants/mockRestaurantData";
+import { USE_MOCK_DATA, GOOGLE_API_KEY } from "../Constants/globalConstants";
 
 navigator.geolocation = require("@react-native-community/geolocation");
 
@@ -98,6 +100,9 @@ export default function AddPost(props) {
 
   const [ratingViewWidth, setRatingViewWidth] = useState(0);
   const [progress, setProgress] = useState(0);
+  const [showMockRestaurantPicker, setShowMockRestaurantPicker] =
+    useState(false);
+  const [mockSearchQuery, setMockSearchQuery] = useState("");
 
   const navigation = useNavigation();
   const dispatch = useDispatch();
@@ -127,6 +132,21 @@ export default function AddPost(props) {
   const onCategorySelect = (item) => {
     setSelectedCategory(item);
   };
+
+  const onMockRestaurantSelect = (restaurant) => {
+    setSelectedRestaurant(restaurant.restaurantName);
+    setSelectedRestaurantID(restaurant.restaurant_id);
+    setLatitude(userLocation.latitude || 37.7749);
+    setLongitude(userLocation.longitude || -122.4194);
+    setShowMockRestaurantPicker(false);
+    setMockSearchQuery(restaurant.restaurantName);
+  };
+
+  const filteredMockRestaurants = mockRestaurants.filter((restaurant) =>
+    restaurant.restaurantName
+      .toLowerCase()
+      .includes(mockSearchQuery.toLowerCase())
+  );
 
   const onShareReviewPress = async () => {
     if (ratingCount == 0) {
@@ -343,7 +363,7 @@ export default function AddPost(props) {
           let uploadImage = await uploadMedia(objImage);
           arrUploadedImages.push({
             type: "image",
-            url: uploadImage.path,
+            url: uploadImage.url, // Use 'url' which contains just the filename
           });
           setUploadedImages(arrUploadedImages);
           setUploadedImagesThumbnails(arrUploadedImagesThumbnails);
@@ -397,7 +417,7 @@ export default function AddPost(props) {
           let uploadImage = await uploadMedia(objImage);
           arrUploadedImages.push({
             type: "video",
-            url: uploadImage.path,
+            url: uploadImage.url, // Use 'url' which contains just the filename
           });
           setUploadedImages(arrUploadedImages);
           setUploadedImagesThumbnails(arrUploadedImagesThumbnails);
@@ -442,7 +462,7 @@ export default function AddPost(props) {
         let uploadImage = await uploadMedia(objImage);
         arrUploadedImages.push({
           type: "image",
-          url: uploadImage.path,
+          url: uploadImage.url, // Use 'url' which contains just the filename
         });
         setUploadedImages(arrUploadedImages);
         setUploadedImagesThumbnails(arrUploadedImagesThumbnails);
@@ -514,7 +534,7 @@ export default function AddPost(props) {
           let uploadImage = await uploadMedia(objImage);
           arrUploadedImages.push({
             type: "video",
-            url: uploadImage.path,
+            url: uploadImage.url, // Use 'url' which contains just the filename
           });
           setUploadedImages(arrUploadedImages);
           setUploadedImagesThumbnails(arrUploadedImagesThumbnails);
@@ -641,92 +661,118 @@ export default function AddPost(props) {
               })}
             >
               Search Restaurant
+              {USE_MOCK_DATA && (
+                <Text
+                  style={commonStyles.textWhite(12, {
+                    color: colors.appPrimary,
+                    fontWeight: "400",
+                  })}
+                >
+                  {" "}
+                  (Mock Data)
+                </Text>
+              )}
             </Text>
-            <GooglePlacesAutocomplete
-              ref={googleInputRef}
-              placeholder="Search Restaurants"
-              fetchDetails={true}
-              onPress={(data, details = null) => {
-                console.log("Selected Place Details:", details);
-                console.log("Place Data:", data);
-                setLatitude(details.geometry.location.lat);
-                setLongitude(details.geometry.location.lng);
-                setSelectedRestaurant(data.structured_formatting.main_text);
-                setSelectedRestaurantID(data.place_id);
-              }}
-              listViewDisplayed="auto"
-              value={selectedRestaurant}
-              query={{
-                key: "AIzaSyC67cbOCHYz64VdKTn2oOnzxM9sVKm-lQY",
-                language: "en",
-                type: "establishment",
-              }}
-              enablePoweredByContainer={false}
-              GooglePlacesSearchQuery={{
-                rankby: "distance",
-              }}
-              nearbyPlacesAPI="GooglePlacesSearch"
-              debounce={400}
-              minLength={2}
-              requestUrl={{
-                useOnPlatform: "web",
-                url: "https://maps.googleapis.com/maps/api",
-              }}
-              styles={{
-                textInput: styles.googlePlacesTextInput,
-                row: styles.googlePlacesRow,
-                listView: {
-                  backgroundColor: colors.white,
-                  borderRadius: moderateScale(8),
-                  marginTop: moderateScale(2),
-                  maxHeight: moderateScale(120),
-                },
-                separator: {
-                  height: 1,
-                  backgroundColor: colors.lightGrey,
-                },
-                powered: {
-                  height: 0,
-                },
-                description: {
-                  color: colors.black,
-                  fontSize: 14,
-                },
-                predefinedPlacesDescription: {
-                  color: colors.black,
-                },
-              }}
-              numberOfLines={5}
-              renderRow={(data, index) => {
-                console.log("Restaurant Row Data:", data);
-                return (
-                  <View style={styles.googleRowContainer}>
-                    <Text
-                      style={commonStyles.textWhite(13, {
-                        color: colors.black,
-                      })}
-                    >
-                      {data.description}
-                    </Text>
-                  </View>
-                );
-              }}
-              textInputProps={{
-                color: colors.black,
-                placeholderTextColor: colors.darkGrey,
-              }}
-              onFail={(error) => {
-                console.error("Google Places Error:", error);
-                if (error.includes("BILLING")) {
-                  setErrorMessage(
-                    "Please enable billing on Google Cloud Console to use restaurant search."
+            {USE_MOCK_DATA ? (
+              <TouchableOpacity
+                style={styles.mockRestaurantInput}
+                onPress={() => setShowMockRestaurantPicker(true)}
+              >
+                <Text
+                  style={commonStyles.textWhite(16, {
+                    color: selectedRestaurant ? colors.black : colors.darkGrey,
+                  })}
+                >
+                  {selectedRestaurant || "Select Restaurant"}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <GooglePlacesAutocomplete
+                ref={googleInputRef}
+                placeholder="Search Restaurants"
+                fetchDetails={true}
+                onPress={(data, details = null) => {
+                  console.log("Selected Place Details:", details);
+                  console.log("Place Data:", data);
+                  setLatitude(details.geometry.location.lat);
+                  setLongitude(details.geometry.location.lng);
+                  setSelectedRestaurant(data.structured_formatting.main_text);
+                  setSelectedRestaurantID(data.place_id);
+                }}
+                listViewDisplayed="auto"
+                value={selectedRestaurant}
+                query={{
+                  key: GOOGLE_API_KEY,
+                  language: "en",
+                  type: "establishment",
+                }}
+                enablePoweredByContainer={false}
+                GooglePlacesSearchQuery={{
+                  rankby: "distance",
+                }}
+                nearbyPlacesAPI="GooglePlacesSearch"
+                debounce={400}
+                minLength={2}
+                requestUrl={{
+                  useOnPlatform: "web",
+                  url: "https://maps.googleapis.com/maps/api",
+                }}
+                styles={{
+                  textInput: styles.googlePlacesTextInput,
+                  row: styles.googlePlacesRow,
+                  listView: {
+                    backgroundColor: colors.white,
+                    borderRadius: moderateScale(8),
+                    marginTop: moderateScale(2),
+                    maxHeight: moderateScale(120),
+                  },
+                  separator: {
+                    height: 1,
+                    backgroundColor: colors.lightGrey,
+                  },
+                  powered: {
+                    height: 0,
+                  },
+                  description: {
+                    color: colors.black,
+                    fontSize: 14,
+                  },
+                  predefinedPlacesDescription: {
+                    color: colors.black,
+                  },
+                }}
+                numberOfLines={5}
+                renderRow={(data, index) => {
+                  console.log("Restaurant Row Data:", data);
+                  return (
+                    <View style={styles.googleRowContainer}>
+                      <Text
+                        style={commonStyles.textWhite(13, {
+                          color: colors.black,
+                        })}
+                      >
+                        {data.description}
+                      </Text>
+                    </View>
                   );
-                } else {
-                  setErrorMessage("Failed to fetch restaurants: " + error);
-                }
-                setShowErrorMessage(true);
-              }}
-            />
+                }}
+                textInputProps={{
+                  color: colors.black,
+                  placeholderTextColor: colors.darkGrey,
+                }}
+                onFail={(error) => {
+                  console.error("Google Places Error:", error);
+                  if (error.includes("BILLING")) {
+                    setErrorMessage(
+                      "Please enable billing on Google Cloud Console to use restaurant search."
+                    );
+                  } else {
+                    setErrorMessage("Failed to fetch restaurants: " + error);
+                  }
+                  setShowErrorMessage(true);
+                }}
+              />
+            )}
             <Text
               style={commonStyles.textWhite(16, {
                 fontWeight: "700",
@@ -750,7 +796,7 @@ export default function AddPost(props) {
                 uploadedImagesThumbnails.length > 0 &&
                 uploadedImagesThumbnails.map((item, index) => {
                   return (
-                    <View>
+                    <View key={`media-${index}`}>
                       <FontAwesome
                         name="close"
                         style={styles.removeMediaContainer}
@@ -792,6 +838,7 @@ export default function AddPost(props) {
               {allFoodCategories.map((item, index) => {
                 return (
                   <TouchableOpacity
+                    key={item.id}
                     onPress={() => {
                       onCategorySelect(item.id);
                     }}
@@ -875,6 +922,7 @@ export default function AddPost(props) {
                     {starRatings.map((item, index) => {
                       return (
                         <Image
+                          key={`star-${index}`}
                           source={item.imageSource}
                           style={{
                             height: moderateScale(15),
@@ -938,6 +986,89 @@ export default function AddPost(props) {
               </View>
             </View>
           </View>
+        </Modal>
+        <Modal
+          visible={showMockRestaurantPicker}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setShowMockRestaurantPicker(false)}
+        >
+          <TouchableWithoutFeedback
+            onPress={() => setShowMockRestaurantPicker(false)}
+          >
+            <View style={styles.mockPickerModalContainer}>
+              <TouchableWithoutFeedback>
+                <View style={styles.mockPickerModalInner}>
+                  <View style={styles.mockPickerHeader}>
+                    <Text
+                      style={commonStyles.textWhite(20, {
+                        color: colors.white,
+                        fontWeight: "700",
+                      })}
+                    >
+                      Select Restaurant
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => setShowMockRestaurantPicker(false)}
+                    >
+                      <FontAwesome
+                        name="close"
+                        style={{ fontSize: 24, color: colors.white }}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                  <TextInput
+                    style={styles.mockSearchInput}
+                    placeholder="Search restaurants..."
+                    placeholderTextColor={colors.darkGrey}
+                    value={mockSearchQuery}
+                    onChangeText={setMockSearchQuery}
+                  />
+                  <ScrollView style={styles.mockRestaurantList}>
+                    {filteredMockRestaurants.map((restaurant, index) => (
+                      <TouchableOpacity
+                        key={restaurant.restaurant_id}
+                        style={styles.mockRestaurantItem}
+                        onPress={() => onMockRestaurantSelect(restaurant)}
+                      >
+                        <View style={styles.mockRestaurantInfo}>
+                          <Text
+                            style={commonStyles.textWhite(16, {
+                              color: colors.black,
+                              fontWeight: "600",
+                            })}
+                          >
+                            {restaurant.restaurantName}
+                          </Text>
+                          <View style={styles.mockRestaurantDetails}>
+                            <Text
+                              style={commonStyles.textWhite(14, {
+                                color: colors.darkGrey,
+                              })}
+                            >
+                              ⭐ {restaurant.restaurantRating}
+                            </Text>
+                            <Text
+                              style={commonStyles.textWhite(14, {
+                                color: colors.darkGrey,
+                                marginLeft: moderateScale(8),
+                              })}
+                            >
+                              {"$".repeat(restaurant.restaurantPrice)}
+                            </Text>
+                          </View>
+                        </View>
+                        <FontAwesome
+                          name="chevron-right"
+                          style={{ fontSize: 16, color: colors.darkGrey }}
+                        />
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
         </Modal>
         {isUploadingMedia && (
           <Modal transparent={true} visible={isUploadingMedia}>
@@ -1158,5 +1289,68 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: `${colors.black}99`,
+  },
+  mockRestaurantInput: {
+    height: moderateScale(26),
+    paddingHorizontal: moderateScale(12),
+    justifyContent: "center",
+    borderWidth: moderateScale(1),
+    borderRadius: moderateScale(8),
+    marginTop: moderateScale(8),
+    borderColor: colors.grey,
+    backgroundColor: colors.lightGrey,
+  },
+  mockPickerModalContainer: {
+    flex: 1,
+    backgroundColor: `${colors.black}aa`,
+    justifyContent: "flex-end",
+  },
+  mockPickerModalInner: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: moderateScale(20),
+    borderTopRightRadius: moderateScale(20),
+    maxHeight: windowHeight * 0.7,
+    paddingBottom: moderateScale(20),
+  },
+  mockPickerHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: moderateScale(16),
+    paddingVertical: moderateScale(16),
+    backgroundColor: colors.appPrimary,
+    borderTopLeftRadius: moderateScale(20),
+    borderTopRightRadius: moderateScale(20),
+  },
+  mockSearchInput: {
+    height: moderateScale(40),
+    marginHorizontal: moderateScale(16),
+    marginTop: moderateScale(12),
+    paddingHorizontal: moderateScale(12),
+    borderWidth: 1,
+    borderColor: colors.grey,
+    borderRadius: moderateScale(8),
+    backgroundColor: colors.lightGrey,
+    color: colors.black,
+  },
+  mockRestaurantList: {
+    marginTop: moderateScale(12),
+    maxHeight: windowHeight * 0.5,
+  },
+  mockRestaurantItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: moderateScale(16),
+    paddingVertical: moderateScale(12),
+    borderBottomWidth: 1,
+    borderBottomColor: colors.lightGrey,
+  },
+  mockRestaurantInfo: {
+    flex: 1,
+  },
+  mockRestaurantDetails: {
+    flexDirection: "row",
+    marginTop: moderateScale(4),
   },
 });

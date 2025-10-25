@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import {
   ImageBackground,
+  Platform,
   SafeAreaView,
   StyleSheet,
   Text,
@@ -56,8 +57,8 @@ export default function Login(props) {
     (state) => state.currentThemeSecondaryColor
   );
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("bbc@yopmail.com");
+  const [password, setPassword] = useState("12345678");
   const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showCustomToast, setShowCustomToast] = useState(false);
@@ -157,7 +158,11 @@ export default function Login(props) {
             // Session API is optional - if it fails, use default session
             let session = null;
             try {
-              session = await apiHandler.userSessionAPI(token, {});
+              const sessionData = {
+                type: "login",
+                device_type: Platform.OS || "unknown",
+              };
+              session = await apiHandler.userSessionAPI(token, sessionData);
             } catch (sessionError) {
               console.log("Session API failed, using default:", sessionError);
               session = { id: 0 }; // Default session

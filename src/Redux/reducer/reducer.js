@@ -190,7 +190,7 @@ const reducer = (state = initialState, action) => {
         }) != -1
       ) {
         arrLikedPosts = arrLikedPosts.filter((item, index) => {
-          item.id != objPost.id;
+          return item.id != objPost.id; // Fixed: added missing return statement
         });
       } else {
         arrLikedPosts.push(objPost);
@@ -212,7 +212,7 @@ const reducer = (state = initialState, action) => {
         updatedPosts = postsInState.map((item, index) => {
           let isInAppPost = item && (item.isGoogle ? item.isGoogle : false);
           if (!isInAppPost && item.id == payloadData.post_id) {
-            let arrComments = item.comment;
+            let arrComments = item.comment || [];
             arrComments.push(payloadData.data);
             item.comment = arrComments;
             return item;

@@ -107,15 +107,6 @@ export default function PostWithoutLogin() {
   const dispatch = useDispatch();
 
   async function getPostsWithoutLogin() {
-    // TEMPORARILY DISABLED FOR DESIGN TESTING - API call commented out
-    console.log("API calls disabled for design testing");
-    setIsLoading(false);
-
-    // Mock data for design testing
-    const mockPosts = [];
-    dispatch(setPostsWithoutLogin(mockPosts));
-
-    /* ORIGINAL CODE - UNCOMMENT TO ENABLE API
     setIsLoading(true);
     let reqObj = {
       latitude: userLocation.latitude,
@@ -132,7 +123,6 @@ export default function PostWithoutLogin() {
       listRef.current.scrollToIndex({ index: 0 });
     }
     setIsLoading(false);
-    */
   }
 
   useEffect(() => {
@@ -191,21 +181,13 @@ export default function PostWithoutLogin() {
       var myHeaders = new Headers();
       myHeaders.append("Content-Type", "application/json");
       let fcmToken = await AsyncStorage.getItem("fcmToken");
+
+      // Backend expects: provider, social_id, name, email
       var raw = JSON.stringify({
-        full_name: "User",
-        // "name": appleAuthRequestResponse?.fullName?.givenName != null ? appleAuthRequestResponse.fullName.givenName : "",
-        email:
-          appleAuthRequestResponse.email != null
-            ? appleAuthRequestResponse.email
-            : "",
-        provider_id: appleAuthRequestResponse.user,
-        password: "123456789",
-        device_type: "ios",
-        provider_name: "apple",
-        image: "",
-        mobile_number: "96860970",
-        user_name: "user",
-        fcm_token: fcmToken,
+        provider: "apple",
+        social_id: appleAuthRequestResponse.user,
+        name: appleAuthRequestResponse?.fullName?.givenName || "User",
+        email: appleAuthRequestResponse.email || "",
       });
       var requestOptions = {
         method: "POST",
@@ -217,27 +199,26 @@ export default function PostWithoutLogin() {
         await fetch(BASE_URL + "socialLogin", requestOptions)
           .then((response) => response.json())
           .then(async (response) => {
-            if (response?.status == 200) {
-              const socialResponse = response;
-              const token = socialResponse?.token;
+            if (response?.success && response?.token) {
+              const token = response.token;
               await helperFunctions.storeAccessToken(token);
               AsyncStorage.setItem("swipeValue", "0");
               AsyncStorage.setItem("isReviewPosted", "false");
-              if (socialResponse.token) {
-                let userData = socialResponse.userData;
-                dispatch(setUserData(userData[0]));
+
+              if (response.user) {
+                dispatch(setUserData(response.user));
               } else {
-                let userData = await apiHandler.getUserData(
-                  socialResponse.token
-                );
-                dispatch(setUserData(userData[0]));
+                let userData = await apiHandler.getUserData(token);
+                dispatch(setUserData(userData));
               }
-              if (socialResponse?.isUser) {
+
+              if (response?.isNewUser) {
                 console.log("New userrrrrrrrr");
                 dispatch(setIsNewUser(true));
               } else {
                 dispatch(setIsNewUser(false));
               }
+
               let categories = await apiHandler.getAllCategories(token);
               let adminAdvertisements =
                 await apiHandler.getAdminPanelAdvertisements(token);
@@ -246,12 +227,12 @@ export default function PostWithoutLogin() {
               dispatch(setAdminAdvertisements(adminAdvertisements));
               dispatch(setFoodCategories(categories));
               dispatch(setAccessToken(token));
+              dispatch(showHideForceLoginModal(false));
               setIsLoading(false);
             } else {
               setIsLoading(false);
             }
           });
-        // })
       } catch (error) {
         setIsLoading(false);
       }
@@ -259,13 +240,8 @@ export default function PostWithoutLogin() {
   };
 
   const onGooglePress = () => {
-    // TEMPORARILY DISABLED FOR DESIGN TESTING
-    console.log("Google login disabled for design testing");
-    dispatch(showHideForceLoginModal(false));
-    return;
-
-    /* ORIGINAL CODE - UNCOMMENT TO ENABLE
     setIsLoading(true);
+    console.log("🚀 Starting Google Sign-in...");
     GoogleSignin.configure({
       iosClientId:
         "887856847210-br194482savpiontotn1d0kucuosbdct.apps.googleusercontent.com",
@@ -273,24 +249,25 @@ export default function PostWithoutLogin() {
         "887856847210-kn6g0ggbduj48m2qpgntaog0bfmmp0os.apps.googleusercontent.com",
     });
     GoogleSignin.hasPlayServices()
-    */
-    Promise.resolve()
       .then((hasPlayService) => {
         if (hasPlayService) {
           console.log("Google sign in", hasPlayService);
           GoogleSignin.signIn()
             .then((userInfo) => {
+              console.log(
+                "✅ Google Sign-in successful, calling socialLogin API..."
+              );
               socialLogin(userInfo.user, "google");
-              setIsLoading(false);
             })
             .catch((e) => {
               setIsLoading(false);
-              console.log("ERROR IS: " + JSON.stringify(e));
+              console.log("❌ Google Sign-in ERROR: " + JSON.stringify(e));
             });
         }
       })
       .catch((e) => {
-        console.log("ERROR IS: " + JSON.stringify(e));
+        setIsLoading(false);
+        console.log("❌ Google Play Services ERROR: " + JSON.stringify(e));
       });
   };
 
@@ -361,92 +338,122 @@ export default function PostWithoutLogin() {
     console.log("resultresult", result);
     let fcmToken = await AsyncStorage.getItem("fcmToken");
     console.log("FCCCCMMMMM", fcmToken);
-    let socialLogindata = {
-      full_name: result.full_name,
-      email: result.email,
-      provider_id: result.id,
-      provider_name: type,
-      password: 12345678,
-      device_type: Platform.OS,
-      image: result.photo,
-    };
+
     var myHeaders = new Headers();
     myHeaders.append("Content-Type", "application/json");
+
+    // Backend expects: provider, social_id, name, email
     var raw = JSON.stringify({
-      provider_id: result.id,
-      password: "123456789",
-      device_type: "ios",
-      full_name: result.name,
-      email: result.email,
-      provider_name: type,
-      image: result.photo,
-      fcm_token: fcmToken,
+      provider: type, // 'google', 'facebook', 'apple'
+      social_id: result.id, // Social provider's user ID
+      name: result.name, // User's full name
+      email: result.email, // User's email
     });
+    console.log("Calling socialLogin API with:", JSON.parse(raw));
+    console.log("API URL:", BASE_URL + "socialLogin");
+
+    // Add timeout to the fetch
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
     try {
       var requestOptions = {
         method: "POST",
         headers: myHeaders,
         body: raw,
         redirect: "follow",
+        signal: controller.signal,
       };
       fetch(BASE_URL + "socialLogin", requestOptions)
-        .then((response) => response.json())
+        .then((response) => {
+          clearTimeout(timeoutId);
+          console.log("API Response received! Status:", response.status);
+          console.log("Response OK:", response.ok);
+          if (!response.ok) {
+            console.log("❌ Response not OK, status:", response.status);
+          }
+          return response.json();
+        })
         .then(async (response) => {
-          // .then(async (res) => {
-          console.log("************ ", response);
-          // let formData = apiHandler.createFormData(socialLogindata)
-          // const socialResponse = await apiHandler.socialLogin(formData)
-          let socialResponse = response;
+          console.log(
+            "************ API Response: ",
+            JSON.stringify(response, null, 2)
+          );
+
+          // Check if login was successful
+          if (!response?.success || !response?.token) {
+            console.log(
+              "❌ Login failed:",
+              response?.message || "Unknown error"
+            );
+            setIsLoading(false);
+            return;
+          }
+
           AsyncStorage.setItem("swipeValue", "0");
           AsyncStorage.setItem("isReviewPosted", "false");
-          if (socialResponse?.token) {
-            const token = socialResponse?.token;
-            await helperFunctions.storeAccessToken(token);
-            if (socialResponse.userData) {
-              let userData = socialResponse.userData;
-              dispatch(setUserData(userData[0]));
-            } else {
-              let userData = await apiHandler.getUserData(socialResponse.token);
-              dispatch(setUserData(userData[0]));
-            }
-            if (socialResponse?.isUser) {
-              console.log("New userrrrrrrrr");
-              dispatch(setIsNewUser(true));
-            } else {
-              dispatch(setIsNewUser(false));
-            }
-            let categories = await apiHandler.getAllCategories(token);
-            let adminAdvertisements =
-              await apiHandler.getAdminPanelAdvertisements(token);
-            let session = await apiHandler.userSessionAPI(token, {});
-            let likedInAppPosts = await apiHandler.getFavoriteRestaurants(
-              token
-            );
-            let googlePosts = await apiHandler.getGoogleLikedPosts(token);
-            let favoriteRestaurants = await apiHandler.getLikedRestaurants(
-              token
-            );
-            favoriteRestaurants = favoriteRestaurants.map((item, index) => {
-              return {
-                restaurantName: item.restaurant_name,
-                restaurantImage: item.image,
-                restaurant_id: item.restaurant_id,
-              };
-            });
-            dispatch(setLikedPosts(likedInAppPosts));
-            dispatch(setFavouritePlaces(googlePosts));
-            dispatch(setFavoriteRestaurants(favoriteRestaurants));
-            dispatch(setCurrentSessionId(session.id));
-            dispatch(setAdminAdvertisements(adminAdvertisements));
-            dispatch(setFoodCategories(categories));
-            dispatch(setAccessToken(token));
-            setIsLoading(false);
+
+          const token = response.token;
+          await helperFunctions.storeAccessToken(token);
+
+          // Backend returns 'user' not 'userData'
+          if (response.user) {
+            dispatch(setUserData(response.user));
           } else {
-            setIsLoading(false);
+            let userData = await apiHandler.getUserData(token);
+            dispatch(setUserData(userData));
           }
+
+          // Backend returns 'isNewUser' not 'isUser'
+          if (response?.isNewUser) {
+            console.log("New userrrrrrrrr");
+            dispatch(setIsNewUser(true));
+          } else {
+            dispatch(setIsNewUser(false));
+          }
+
+          // Load additional data
+          let categories = await apiHandler.getAllCategories(token);
+          let adminAdvertisements =
+            await apiHandler.getAdminPanelAdvertisements(token);
+          let session = await apiHandler.userSessionAPI(token, {});
+          let likedInAppPosts = await apiHandler.getFavoriteRestaurants(token);
+          let googlePosts = await apiHandler.getGoogleLikedPosts(token);
+          let favoriteRestaurants = await apiHandler.getLikedRestaurants(token);
+          favoriteRestaurants = favoriteRestaurants.map((item, index) => {
+            return {
+              restaurantName: item.restaurant_name,
+              restaurantImage: item.image,
+              restaurant_id: item.restaurant_id,
+            };
+          });
+
+          dispatch(setLikedPosts(likedInAppPosts));
+          dispatch(setFavouritePlaces(googlePosts));
+          dispatch(setFavoriteRestaurants(favoriteRestaurants));
+          dispatch(setCurrentSessionId(session.id));
+          dispatch(setAdminAdvertisements(adminAdvertisements));
+          dispatch(setFoodCategories(categories));
+          dispatch(setAccessToken(token));
+          console.log("✅ Access token set successfully, closing modal");
+          dispatch(showHideForceLoginModal(false));
+          setIsLoading(false);
+        })
+        .catch((fetchError) => {
+          clearTimeout(timeoutId);
+          if (fetchError.name === "AbortError") {
+            console.log("❌ API request timeout after 30 seconds");
+          } else {
+            console.log("❌ API fetch error:", fetchError);
+            console.log("❌ Error name:", fetchError.name);
+            console.log("❌ Error message:", fetchError.message);
+          }
+          setIsLoading(false);
         });
     } catch (error) {
-      console.log("social login ", error.message);
+      clearTimeout(timeoutId);
+      console.log("❌ social login error:", error.message);
+      setIsLoading(false);
     }
   };
 

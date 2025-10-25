@@ -7,9 +7,9 @@ import {
 } from "./mockRestaurantData";
 // For Android Emulator, use 10.0.2.2 instead of localhost
 // For iOS Simulator, use localhost or your machine's IP
-// If 10.0.2.2 doesn't work, use your computer's IP (e.g., 192.168.1.5)
-export const BASE_URL = "http://10.0.2.2:3000/api/";
-// export const BASE_URL = "http://YOUR_COMPUTER_IP:3000/api/"; // Alternative
+// For Real Android Device, use your computer's actual IP address
+export const BASE_URL = "http://192.168.100.14:3000/api/"; // Real device IP
+// export const BASE_URL = "http://10.0.2.2:3000/api/"; // For Android Emulator
 
 export const apiHandler = {
   createFormData: (reqObj) => {
@@ -234,6 +234,14 @@ export const apiHandler = {
       let arrPosts = [];
       if (response.data.post && response.data.post.length > 0) {
         let arrInAppPosts = [...response.data.post];
+
+        // Transform backend response to match frontend expectations
+        arrInAppPosts = arrInAppPosts.map((post) => ({
+          ...post,
+          comment: post.comments || [], // Backend returns 'comments', frontend expects 'comment'
+          like: post.likes || [], // Backend returns 'likes', frontend expects 'like'
+        }));
+
         arrInAppPosts = arrInAppPosts.sort((a, b) => {
           return (
             new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
@@ -291,7 +299,13 @@ export const apiHandler = {
         });
         let arrPosts = [];
         if (response.data.post && response.data.post.length > 0) {
-          arrPosts = [...response.data.post, ...placesData];
+          // Transform backend response to match frontend expectations
+          let transformedPosts = response.data.post.map((post) => ({
+            ...post,
+            comment: post.comments || [],
+            like: post.likes || [],
+          }));
+          arrPosts = [...transformedPosts, ...placesData];
         } else {
           arrPosts = [...placesData];
         }
@@ -405,14 +419,27 @@ export const apiHandler = {
   },
   likePost: async (reqObj, token) => {
     try {
+      console.log("Like Post API Request:", {
+        url: BASE_URL + "post_like",
+        payload: reqObj,
+      });
       const res = await axios.post(BASE_URL + "post_like", reqObj, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
+      console.log("Like Post API Response:", res.data);
       return res.data;
     } catch (error) {
-      console.log("Error is", error);
+      console.error("Like Post API Error:", error);
+      console.error("Error details:", error.response?.data || error.message);
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to like post",
+      };
     }
   },
   commentOnPost: async (reqObj, token) => {

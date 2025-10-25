@@ -21,9 +21,9 @@ export const ratingsData = [1, 2, 3, 4, 5];
 
 // For Android Emulator, use 10.0.2.2 instead of localhost
 // For iOS Simulator, use localhost or your machine's IP
-// If 10.0.2.2 doesn't work, use your computer's IP (e.g., 192.168.1.5)
-const BACKEND_BASE_URL = "http://10.0.2.2:3000";
-// const BACKEND_BASE_URL = "http://YOUR_COMPUTER_IP:3000"; // Alternative
+// For Real Android Device, use your computer's actual IP address
+const BACKEND_BASE_URL = "http://192.168.100.14:3000"; // Real device IP
+// const BACKEND_BASE_URL = "http://10.0.2.2:3000"; // For Android Emulator
 
 export const POSTS_IMAGE_BASE_URL = `${BACKEND_BASE_URL}/storage/`;
 
@@ -33,11 +33,11 @@ export const USER_PROFILE_BASE_URL = `${BACKEND_BASE_URL}/storage/uploads/`;
 
 export const ADVERTISEMENTS_BASE_URL = `${BACKEND_BASE_URL}/storage/video/`;
 
-export const GOOGLE_API_KEY = "AIzaSyC67cbOCHYz64VdKTn2oOnzxM9sVKm-lQY";
+export const GOOGLE_API_KEY = "AIzaSyCLb-WobrzT3gvpXDLkNYPWbIpd30bxKLQ";
 
 // ⚠️ TEMPORARY: Set to true to use mock data when Google API billing is not enabled
 // Set to false once you enable billing on Google Cloud Console
-export const USE_MOCK_DATA = true;
+export const USE_MOCK_DATA = false;
 
 export const errorVibrationPattern =
   Platform.OS == "ios" ? [0, 200] : [0, 200, 100, 70];

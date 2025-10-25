@@ -174,78 +174,84 @@ export default function SinglePostComponent({}) {
   }, [isFocused]);
 
   const searchQuickBitesPlaces = async () => {
-    setIsLoading(true);
-    setLoaderTitle(`Fetching ${searchedQuickBitesName} restaurants`);
-    let arrPostsWithAdminAds = [];
-    let arrPostsWithAllAds = [];
-    let response = await axios.get(
-      `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${
-        userLocation.latitude
-      }%2C${userLocation.longitude}&radius=${
-        savedPostsRadius * 1000
-      }&type=restaurant&name=${searchedQuickBitesName}&key=${GOOGLE_API_KEY}`
-    );
-    let placesData = [];
-    placesData = response?.data?.results?.map((item, index) => {
-      if (item.photos && item.photos.length > 0) {
-        return {
-          restaurantName: item.name,
-          restaurantRating: item.rating,
-          restaurantPrice: item.price_level,
-          restaurantImage:
-            item.photos &&
-            item.photos.length > 0 &&
-            item.photos[0].photo_reference,
-          restaurantTiming: item.opening_hours,
-          restaurant_id: item.place_id,
-          isGoogle: true,
-        };
-      }
-    });
-
-    let totalPostsCount = placesData.length;
-    for (var i = 0; i < totalPostsCount; i++) {
-      if (i % 4 == 0 && i != 0) {
-        let randomAdIndex = Math.floor(
-          Math.random() * adminAdvertisements.length
-        );
-        if (adminAdvertisements && adminAdvertisements.length > 0) {
-          let randomAdvertisment = adminAdvertisements[randomAdIndex];
-          arrPostsWithAdminAds.push({
-            id: randomAdvertisment.id,
-            isAdvertisement: true,
-            adTitle: randomAdvertisment.title,
-            adDescription: randomAdvertisment.description,
-            adType: randomAdvertisment.mediaType,
-            adMediaSource: randomAdvertisment.mediaSource,
-          });
+    try {
+      setIsLoading(true);
+      setLoaderTitle(`Fetching ${searchedQuickBitesName} restaurants`);
+      let arrPostsWithAdminAds = [];
+      let arrPostsWithAllAds = [];
+      let response = await axios.get(
+        `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${
+          userLocation.latitude
+        }%2C${userLocation.longitude}&radius=${
+          savedPostsRadius * 1000
+        }&type=restaurant&name=${searchedQuickBitesName}&key=${GOOGLE_API_KEY}`
+      );
+      let placesData = [];
+      placesData = response?.data?.results?.map((item, index) => {
+        if (item.photos && item.photos.length > 0) {
+          return {
+            restaurantName: item.name,
+            restaurantRating: item.rating,
+            restaurantPrice: item.price_level,
+            restaurantImage:
+              item.photos &&
+              item.photos.length > 0 &&
+              item.photos[0].photo_reference,
+            restaurantTiming: item.opening_hours,
+            restaurant_id: item.place_id,
+            isGoogle: true,
+          };
         }
-      } else {
-        arrPostsWithAdminAds.push(placesData[i]);
+      });
+
+      let totalPostsCount = placesData.length;
+      for (var i = 0; i < totalPostsCount; i++) {
+        if (i % 4 == 0 && i != 0) {
+          let randomAdIndex = Math.floor(
+            Math.random() * adminAdvertisements.length
+          );
+          if (adminAdvertisements && adminAdvertisements.length > 0) {
+            let randomAdvertisment = adminAdvertisements[randomAdIndex];
+            arrPostsWithAdminAds.push({
+              id: randomAdvertisment.id,
+              isAdvertisement: true,
+              adTitle: randomAdvertisment.title,
+              adDescription: randomAdvertisment.description,
+              adType: randomAdvertisment.mediaType,
+              adMediaSource: randomAdvertisment.mediaSource,
+            });
+          }
+        } else {
+          arrPostsWithAdminAds.push(placesData[i]);
+        }
       }
-    }
-    for (var j = 0; j < arrPostsWithAdminAds.length; j++) {
-      if (j % 7 == 0 && j != 0) {
-        let objGoogleAd = {
-          isGoogleAd: true,
-        };
-        arrPostsWithAllAds.push(objGoogleAd);
-      } else {
-        arrPostsWithAllAds.push(arrPostsWithAdminAds[j]);
+      for (var j = 0; j < arrPostsWithAdminAds.length; j++) {
+        if (j % 7 == 0 && j != 0) {
+          let objGoogleAd = {
+            isGoogleAd: true,
+          };
+          arrPostsWithAllAds.push(objGoogleAd);
+        } else {
+          arrPostsWithAllAds.push(arrPostsWithAdminAds[j]);
+        }
       }
-    }
-    arrPostsWithAllAds = arrPostsWithAllAds.filter((item, index, self) => {
-      if (item) {
-        return item;
+      arrPostsWithAllAds = arrPostsWithAllAds.filter((item, index, self) => {
+        if (item) {
+          return item;
+        }
+      });
+      setPostDetails(arrPostsWithAllAds[0]);
+      dispatch(setAllPosts(arrPostsWithAllAds));
+      dispatch(setSearchingForQuickBites(""));
+      if (placesData.length > 0) {
+        carouselRef.current.scrollToIndex({ index: 0 });
       }
-    });
-    setPostDetails(arrPostsWithAllAds[0]);
-    dispatch(setAllPosts(arrPostsWithAllAds));
-    dispatch(setSearchingForQuickBites(""));
-    if (placesData.length > 0) {
-      carouselRef.current.scrollToIndex({ index: 0 });
+      setIsLoading(false);
+    } catch (err) {
+      console.log("Error searching quick bites:", err);
+      dispatch(setSearchingForQuickBites(""));
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   const getServerPosts = async () => {
@@ -342,101 +348,114 @@ export default function SinglePostComponent({}) {
       setIsLoading(false);
     } catch (err) {
       console.log("Error is", err);
+      dispatch(setLoadNewPosts(false));
+      setIsLoading(false);
     }
   };
 
   async function getNewPosts() {
-    setShowLoadingMorePosts(true);
-    let updatedRadius = (savedPostsRadius + 2 * currentIncrementValue) * 1.609;
-    let arrPostsWithAdminAds = [];
-    let arrPostsWithAllAds = [];
-    let arrPostsInState = [...allPosts];
-    let response;
-    if (savedFoodCategories && savedFoodCategories.length > 0) {
-      let arrCategoryNames = [];
-      let arrCategoryIds = [];
-      arrCategoryNames = savedFoodCategories.map((item, index) => {
-        return item.name;
-      });
-      arrCategoryIds = savedFoodCategories.map((item, index) => {
-        return item.id;
-      });
-      let reqObj = {
-        latitude: userLocation.latitude,
-        longitude: userLocation.longitude,
-        category_id: arrCategoryIds,
-      };
-      response = await apiHandler.getPosts(
-        reqObj,
-        updatedRadius,
-        accessToken,
-        arrCategoryNames
-      );
-    } else {
-      let reqObj = {
-        latitude: userLocation.latitude,
-        longitude: userLocation.longitude,
-        category_id: [],
-      };
-      response = await apiHandler.getPosts(reqObj, updatedRadius, accessToken);
-    }
-    response = response.filter((iPlace, index, self) => {
-      if (iPlace) {
-        if (iPlace.restaurant_id) {
-          return (
-            !arrPostsInState.some((iItem, iIndex) => {
-              if (iItem && iItem.restaurant_id) {
-                return iItem.restaurant_id == iPlace.restaurant_id;
-              }
-            }) && iPlace
-          );
-        } else {
-          return iPlace;
-        }
-      }
-    });
-    let totalPostsCount = response.length;
-    for (var i = 0; i < totalPostsCount; i++) {
-      if (i % 4 == 0 && i != 0) {
-        let randomAdIndex = Math.floor(
-          Math.random() * adminAdvertisements.length
-        );
-        if (adminAdvertisements && adminAdvertisements.length > 0) {
-          let randomAdvertisment = adminAdvertisements[randomAdIndex];
-          arrPostsWithAdminAds.push({
-            id: randomAdvertisment.id,
-            isAdvertisement: true,
-            adTitle: randomAdvertisment.title,
-            adDescription: randomAdvertisment.description,
-            adType: randomAdvertisment.mediaType,
-            adMediaSource: randomAdvertisment.mediaSource,
-          });
-        }
-      } else {
-        arrPostsWithAdminAds.push(response[i]);
-      }
-    }
-    for (var j = 0; j < arrPostsWithAdminAds.length; j++) {
-      if (j % 7 == 0 && j != 0) {
-        let objGoogleAd = {
-          isGoogleAd: true,
+    try {
+      setShowLoadingMorePosts(true);
+      let updatedRadius =
+        (savedPostsRadius + 2 * currentIncrementValue) * 1.609;
+      let arrPostsWithAdminAds = [];
+      let arrPostsWithAllAds = [];
+      let arrPostsInState = [...allPosts];
+      let response;
+      if (savedFoodCategories && savedFoodCategories.length > 0) {
+        let arrCategoryNames = [];
+        let arrCategoryIds = [];
+        arrCategoryNames = savedFoodCategories.map((item, index) => {
+          return item.name;
+        });
+        arrCategoryIds = savedFoodCategories.map((item, index) => {
+          return item.id;
+        });
+        let reqObj = {
+          latitude: userLocation.latitude,
+          longitude: userLocation.longitude,
+          category_id: arrCategoryIds,
         };
-        arrPostsWithAllAds.push(objGoogleAd);
+        response = await apiHandler.getPosts(
+          reqObj,
+          updatedRadius,
+          accessToken,
+          arrCategoryNames
+        );
       } else {
-        arrPostsWithAllAds.push(arrPostsWithAdminAds[j]);
+        let reqObj = {
+          latitude: userLocation.latitude,
+          longitude: userLocation.longitude,
+          category_id: [],
+        };
+        response = await apiHandler.getPosts(
+          reqObj,
+          updatedRadius,
+          accessToken
+        );
       }
+      response = response.filter((iPlace, index, self) => {
+        if (iPlace) {
+          if (iPlace.restaurant_id) {
+            return (
+              !arrPostsInState.some((iItem, iIndex) => {
+                if (iItem && iItem.restaurant_id) {
+                  return iItem.restaurant_id == iPlace.restaurant_id;
+                }
+              }) && iPlace
+            );
+          } else {
+            return iPlace;
+          }
+        }
+      });
+      7;
+      let totalPostsCount = response.length;
+      for (var i = 0; i < totalPostsCount; i++) {
+        if (i % 4 == 0 && i != 0) {
+          let randomAdIndex = Math.floor(
+            Math.random() * adminAdvertisements.length
+          );
+          if (adminAdvertisements && adminAdvertisements.length > 0) {
+            let randomAdvertisment = adminAdvertisements[randomAdIndex];
+            arrPostsWithAdminAds.push({
+              id: randomAdvertisment.id,
+              isAdvertisement: true,
+              adTitle: randomAdvertisment.title,
+              adDescription: randomAdvertisment.description,
+              adType: randomAdvertisment.mediaType,
+              adMediaSource: randomAdvertisment.mediaSource,
+            });
+          }
+        } else {
+          arrPostsWithAdminAds.push(response[i]);
+        }
+      }
+      for (var j = 0; j < arrPostsWithAdminAds.length; j++) {
+        if (j % 7 == 0 && j != 0) {
+          let objGoogleAd = {
+            isGoogleAd: true,
+          };
+          arrPostsWithAllAds.push(objGoogleAd);
+        } else {
+          arrPostsWithAllAds.push(arrPostsWithAdminAds[j]);
+        }
+      }
+      arrPostsWithAllAds = arrPostsWithAllAds.filter((item, index, self) => {
+        if (item) {
+          return item;
+        }
+      });
+      let increment = currentIncrementValue;
+      arrPostsWithAllAds = [...arrPostsInState, ...arrPostsWithAllAds];
+      setCurrentIncrementValue(increment + 1);
+      setPostDetails(arrPostsWithAllAds[currentPostIndex]);
+      dispatch(setAllPosts(arrPostsWithAllAds));
+      setShowLoadingMorePosts(false);
+    } catch (err) {
+      console.log("Error loading new posts:", err);
+      setShowLoadingMorePosts(false);
     }
-    arrPostsWithAllAds = arrPostsWithAllAds.filter((item, index, self) => {
-      if (item) {
-        return item;
-      }
-    });
-    let increment = currentIncrementValue;
-    arrPostsWithAllAds = [...arrPostsInState, ...arrPostsWithAllAds];
-    setCurrentIncrementValue(increment + 1);
-    setPostDetails(arrPostsWithAllAds[currentPostIndex]);
-    dispatch(setAllPosts(arrPostsWithAllAds));
-    setShowLoadingMorePosts(false);
   }
 
   const onRestaurantImagePress = (item) => {
@@ -486,7 +505,8 @@ export default function SinglePostComponent({}) {
   };
 
   const likeUnlikeInAppPosts = async (post, isLiked) => {
-    console.log("Liking ", isLiked);
+    console.log("Liking post:", post.id, "isLiked:", isLiked);
+
     if (!isLiked) {
       setLikingPost(true);
       Animated.timing(opacity, {
@@ -505,6 +525,8 @@ export default function SinglePostComponent({}) {
         });
       });
     }
+
+    // Update Redux state first
     let objPayload;
     let dataForPayload = { created_at: new Date(), user: userDetails };
     if (!isLiked) {
@@ -521,43 +543,94 @@ export default function SinglePostComponent({}) {
       };
     }
     dispatch(updatePost(objPayload));
+
+    // Call like API
     let reqObj = {
       user_id: userDetails.id,
       post_id: post.id,
       created_id: post.user_id,
     };
-    let restaurantDetails = await axios.get(
-      `https://maps.googleapis.com/maps/api/place/details/json?place_id=${post.restaurant_id}&key=${GOOGLE_API_KEY}`
-    );
-    restaurantDetails = restaurantDetails.data.result;
-    let requestObject = {
-      restaurant_id: restaurantDetails.place_id,
-      restaurant_name: restaurantDetails.name,
-      image:
-        restaurantDetails &&
-        restaurantDetails.photos &&
-        restaurantDetails.photos.length > 0
-          ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${700}&photo_reference=${
-              restaurantDetails.photos[0].photo_reference
-            }&key=${GOOGLE_API_KEY}`
-          : "image",
-    };
-    let objRestaurant = {
-      restaurant_id: restaurantDetails.place_id,
-      restaurantName: restaurantDetails.name,
-      restaurantImage:
-        restaurantDetails &&
-        restaurantDetails.photos &&
-        restaurantDetails.photos.length > 0
-          ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${700}&photo_reference=${
-              restaurantDetails.photos[0].photo_reference
-            }&key=${GOOGLE_API_KEY}`
-          : "image",
-    };
-    dispatch(updateFavoriteRestaurants(objRestaurant));
-    dispatch(updateLikedPosts(post));
-    await apiHandler.likePost(reqObj, accessToken);
-    await apiHandler.likeRestaurant(requestObject, accessToken);
+
+    try {
+      const likeResponse = await apiHandler.likePost(reqObj, accessToken);
+      console.log("Like API Response:", likeResponse);
+
+      if (!likeResponse || !likeResponse.success) {
+        console.error("Failed to like post:", likeResponse?.message);
+        // Rollback Redux state on failure
+        let rollbackPayload = {
+          type: isLiked ? "like" : "unlike",
+          post_id: post.id,
+          data: dataForPayload,
+        };
+        dispatch(updatePost(rollbackPayload));
+        return;
+      }
+
+      // Handle restaurant favorite - use existing post data instead of fetching
+      if (post.restaurant_id && !post.restaurant_id.startsWith("MOCK_")) {
+        // Real restaurant - use data from the post
+        try {
+          // Build restaurant object from post data
+          let restaurantName =
+            post.restaurant && typeof post.restaurant === "object"
+              ? post.restaurant.name
+              : post.restaurant || "Unknown Restaurant";
+
+          // Use the photo reference from the post's first file if available
+          let restaurantImage = "";
+          if (post.file && post.file.length > 0 && post.file[0].filenames) {
+            restaurantImage = POSTS_IMAGE_BASE_URL + post.file[0].filenames;
+          }
+
+          let requestObject = {
+            restaurant_id: post.restaurant_id,
+            restaurant_name: restaurantName,
+            image: restaurantImage,
+          };
+
+          let objRestaurant = {
+            restaurant_id: post.restaurant_id,
+            restaurantName: restaurantName,
+            restaurantImage: restaurantImage,
+          };
+
+          dispatch(updateFavoriteRestaurants(objRestaurant));
+          await apiHandler.likeRestaurant(requestObject, accessToken);
+          console.log("✅ Restaurant favorited successfully");
+        } catch (restaurantError) {
+          console.log(
+            "Restaurant favorite error (non-critical):",
+            restaurantError.message
+          );
+        }
+      } else if (post.restaurant_id && post.restaurant_id.startsWith("MOCK_")) {
+        // Mock restaurant ID - use restaurant data from post
+        console.log("Using mock restaurant data for like");
+        let objRestaurant = {
+          restaurant_id: post.restaurant_id,
+          restaurantName:
+            post.restaurant && typeof post.restaurant === "object"
+              ? post.restaurant.name
+              : post.restaurant || "Unknown",
+          restaurantImage: "",
+        };
+        dispatch(updateFavoriteRestaurants(objRestaurant));
+      }
+
+      dispatch(updateLikedPosts(post));
+      console.log("✅ Like operation completed successfully");
+    } catch (error) {
+      console.error("❌ Error in like/unlike operation:", error);
+      console.error("Error details:", error.response?.data || error.message);
+      // Rollback Redux state on error
+      let rollbackPayload = {
+        type: isLiked ? "like" : "unlike",
+        post_id: post.id,
+        data: dataForPayload,
+      };
+      dispatch(updatePost(rollbackPayload));
+    }
   };
 
   const showHideCommentModal = () => {
@@ -848,13 +921,13 @@ export default function SinglePostComponent({}) {
         <ImageBackground
           resizeMode="cover"
           source={
-            item &&
-            item.restaurantImage &&
-            item.restaurantImage != "" && {
-              uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${700}&photo_reference=${
-                item.restaurantImage
-              }&key=${GOOGLE_API_KEY}`,
-            }
+            item && item.restaurantImage && item.restaurantImage != ""
+              ? {
+                  uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${700}&photo_reference=${
+                    item.restaurantImage
+                  }&key=${GOOGLE_API_KEY}`,
+                }
+              : imagePath.americanFoodImage
           }
           style={{ height: componentHeight, width: windowWidth }}
         >
@@ -936,6 +1009,7 @@ export default function SinglePostComponent({}) {
                                 : 0
                             ) && (
                             <FontAwesome
+                              key={`dollar-${innerIndex}`}
                               name="dollar"
                               style={{
                                 fontSize: 25,
@@ -1062,27 +1136,41 @@ export default function SinglePostComponent({}) {
       setShowCommentModal(false);
       setIsLoading(true);
       setLoaderTitle("Posting your review");
-      let objData = comment;
-      objData = { comment: comment, created_at: new Date(), user: userDetails };
-      let objPayload = {
-        type: "comment",
-        post_id: postDetails.id,
-        data: objData,
-      };
-      dispatch(updatePost(objPayload));
-      setComment("");
-      setCustomToastMessage("Review posted successfully");
-      setIsLoading(false);
-      setShowCustomToast(true);
+
       let reqObj = {
         post_id: postDetails.id,
         comment: comment,
         created_id: postDetails.user_id,
       };
-      let response;
+
       try {
-        response = await apiHandler.commentOnPost(reqObj, accessToken);
+        const response = await apiHandler.commentOnPost(reqObj, accessToken);
+
+        if (response && response.success) {
+          let objData = comment;
+          objData = {
+            comment: comment,
+            created_at: new Date(),
+            user: userDetails,
+          };
+          let objPayload = {
+            type: "comment",
+            post_id: postDetails.id,
+            data: objData,
+          };
+          dispatch(updatePost(objPayload));
+          setComment("");
+          setCustomToastMessage("Review posted successfully");
+          setShowCustomToast(true);
+        } else {
+          setErrorMessage(response?.message || "Failed to post comment");
+          setShowErrorMessage(true);
+        }
+        setIsLoading(false);
       } catch (error) {
+        console.error("Comment Error:", error);
+        setErrorMessage("Failed to post comment. Please try again.");
+        setShowErrorMessage(true);
         setIsLoading(false);
       }
     }
@@ -1149,7 +1237,11 @@ export default function SinglePostComponent({}) {
                     zIndex: 20,
                   })}
                 >
-                  {item && item.restaurant}
+                  {item &&
+                  item.restaurant &&
+                  typeof item.restaurant === "object"
+                    ? item.restaurant.name
+                    : item.restaurant || "Unknown Restaurant"}
                 </Text>
                 {item && item.user && (
                   <Text
@@ -1721,7 +1813,11 @@ export default function SinglePostComponent({}) {
                     {postDetails.allReviews &&
                       postDetails.allReviews.length > 0 &&
                       postDetails.allReviews.map((item, index) => {
-                        return renderReview(item, index);
+                        return (
+                          <View key={`review-${index}`}>
+                            {renderReview(item, index)}
+                          </View>
+                        );
                       })}
                   </ScrollView>
                 ) : selectedTab.id == 0 ? (
@@ -1735,7 +1831,11 @@ export default function SinglePostComponent({}) {
                         {postDetails &&
                           postDetails.comment &&
                           postDetails.comment.map((item, index) => {
-                            return renderCommentView(item, index);
+                            return (
+                              <View key={`comment-${index}`}>
+                                {renderCommentView(item, index)}
+                              </View>
+                            );
                           })}
                       </ScrollView>
                       <View style={styles.commentBoxContainer}>
@@ -1767,7 +1867,11 @@ export default function SinglePostComponent({}) {
                       postDetails.like &&
                       postDetails.like.length > 0 &&
                       postDetails.like.map((item, index) => {
-                        return renderLikedView(item, index);
+                        return (
+                          <View key={`like-${index}`}>
+                            {renderLikedView(item, index)}
+                          </View>
+                        );
                       })}
                   </ScrollView>
                 ))}

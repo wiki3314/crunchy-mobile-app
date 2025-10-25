@@ -583,7 +583,7 @@ export default function Search(props) {
             listViewDisplayed={false}
             value={selectedRestaurant}
             query={{
-              key: "AIzaSyC67cbOCHYz64VdKTn2oOnzxM9sVKm-lQY",
+              key: GOOGLE_API_KEY,
               language: "en",
               type: "restaurant",
             }}
