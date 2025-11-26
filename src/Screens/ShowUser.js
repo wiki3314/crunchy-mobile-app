@@ -77,16 +77,32 @@ export default function ProfileScreen(props) {
 
     useEffect(() => {
         apiHandler.getOtherUserData(token, userID).then((user) => {
-            let arrFollowers = user.followers
-            let arrFollowing = user.following
-            if (arrFollowers && arrFollowers.length > 0 && arrFollowers.findIndex((item, index) => {
-                return item.follows.id == userData.id
-            }) != -1) {
-                setIsFollowing(true)
+            // Check if it's an error response (has success: false)
+            if (user && user.success === false && user.message) {
+                // Error response
+                setShowErrorMessage(true)
+                setCustomToastMessage(user.message || 'Failed to load user data')
+                setIsLoading(false)
+                return
             }
-            setUserFollowers(arrFollowers)
-            setUserFollowing(arrFollowing)
-            setUserDetails(user)
+            // Success response - user object should have followers/following
+            if (user && (user.followers !== undefined || user.following !== undefined)) {
+                let arrFollowers = user.followers || []
+                let arrFollowing = user.following || []
+                if (arrFollowers && arrFollowers.length > 0 && arrFollowers.findIndex((item, index) => {
+                    return item.follows && item.follows.id == userData.id
+                }) != -1) {
+                    setIsFollowing(true)
+                }
+                setUserFollowers(arrFollowers)
+                setUserFollowing(arrFollowing)
+                setUserDetails(user)
+            }
+            setIsLoading(false)
+        }).catch((error) => {
+            console.error("Error loading user data:", error)
+            setShowErrorMessage(true)
+            setCustomToastMessage('Failed to load user data')
             setIsLoading(false)
         })
     }, [userID])
@@ -94,18 +110,36 @@ export default function ProfileScreen(props) {
     const getUserDetails = async () => {
         setIsLoading(true)
         setLoaderTitle("Getting profile details")
-        let userDetails = await apiHandler.getOtherUserData(token, userID)
-        let arrFollowers = userDetails.followers
-        let arrFollowing = userDetails.following
-        if (arrFollowers && arrFollowers.length > 0 && arrFollowers.findIndex((item, index) => {
-            return item.follows.id == userData.id
-        }) != -1) {
-            setIsFollowing(true)
+        try {
+            let userDetails = await apiHandler.getOtherUserData(token, userID)
+            // Check if it's an error response (has success: false)
+            if (userDetails && userDetails.success === false && userDetails.message) {
+                // Error response
+                setShowErrorMessage(true)
+                setCustomToastMessage(userDetails.message || 'Failed to load user data')
+                setIsLoading(false)
+                return
+            }
+            // Success response - user object should have followers/following
+            if (userDetails && (userDetails.followers !== undefined || userDetails.following !== undefined)) {
+                let arrFollowers = userDetails.followers || []
+                let arrFollowing = userDetails.following || []
+                if (arrFollowers && arrFollowers.length > 0 && arrFollowers.findIndex((item, index) => {
+                    return item.follows && item.follows.id == userData.id
+                }) != -1) {
+                    setIsFollowing(true)
+                }
+                setUserFollowers(arrFollowers)
+                setUserFollowing(arrFollowing)
+                setUserDetails(userDetails)
+            }
+            setIsLoading(false)
+        } catch (error) {
+            console.error("Error getting user details:", error)
+            setShowErrorMessage(true)
+            setCustomToastMessage('Failed to load user data')
+            setIsLoading(false)
         }
-        setUserFollowers(arrFollowers)
-        setUserFollowing(arrFollowing)
-        setUserDetails(userDetails)
-        setIsLoading(false)
     }
 
     function onBackIconPress() {
@@ -135,45 +169,52 @@ export default function ProfileScreen(props) {
                 user_id: userID
             }
             let response = await apiHandler.followUnfollowUser(token, reqObj)
+            
+            if (!response || !response.success) {
+                setShowErrorMessage(true)
+                setCustomToastMessage(response?.message || 'Failed to follow/unfollow user')
+                setIsLoading(false)
+                return
+            }
+            
             let otherUserData = await apiHandler.getOtherUserData(token, userID)
-            let arrFollowers = otherUserData.followers
-            let arrFollowing = otherUserData.following
-            if (arrFollowers && arrFollowers.length > 0 && arrFollowers.findIndex((item, index) => {
-                return item.follows.id == userData.id
-            }) != -1) {
-                setIsFollowing(true)
+            // Check if it's an error response (has success: false)
+            if (otherUserData && otherUserData.success === false && otherUserData.message) {
+                setShowErrorMessage(true)
+                setCustomToastMessage(otherUserData.message || 'Failed to refresh user data')
+                setIsLoading(false)
+                return
             }
-            else {
-                setIsFollowing(false)
-            }
-            setUserFollowers(arrFollowers)
-            setUserFollowing(arrFollowing)
-            setUserDetails(otherUserData)
-            if (response.message == "User Follow") {
-                setShowCustomToast(true)
-                // let arrUserFollowers = [...userFollowers]
-                // let otherUser = {
-                //     follows: userData
-                // }
-                // // arrUserFollowers.push(otherUser)
-                // setUserFollowers(arrUserFollowers)
-                setCustomToastMessage(`${otherUserData.full_name} followed`)
-                // setIsFollowing(true)
-            }
-            else {
-                setShowCustomToast(true)
-                // let arrPreviousFollowers = [...userFollowers]
-                // arrPreviousFollowers = arrPreviousFollowers.filter((item, index) => {
-                //     return item.follows.id != userData.id
-                // })
-                // setUserFollowers(arrPreviousFollowers)
-                setCustomToastMessage(`${otherUserData.full_name} unfollowed`)
-                // setIsFollowing(false)
+            
+            // Success response - user object should have followers/following
+            if (otherUserData && (otherUserData.followers !== undefined || otherUserData.following !== undefined)) {
+                let arrFollowers = otherUserData.followers || []
+                let arrFollowing = otherUserData.following || []
+                if (arrFollowers && arrFollowers.length > 0 && arrFollowers.findIndex((item, index) => {
+                    return item.follows && item.follows.id == userData.id
+                }) != -1) {
+                    setIsFollowing(true)
+                }
+                else {
+                    setIsFollowing(false)
+                }
+                setUserFollowers(arrFollowers)
+                setUserFollowing(arrFollowing)
+                setUserDetails(otherUserData)
+                
+                if (response.message == "User Follow") {
+                    setShowCustomToast(true)
+                    setCustomToastMessage(`${otherUserData.full_name} followed`)
+                }
+                else {
+                    setShowCustomToast(true)
+                    setCustomToastMessage(`${otherUserData.full_name} unfollowed`)
+                }
             }
             setIsLoading(false)
         }
         catch (error) {
-            console.log("Error is", error)
+            console.error("Error in follow/unfollow:", error)
             setIsLoading(false)
             setShowErrorMessage(true)
             setCustomToastMessage('Error connecting to server')
@@ -191,6 +232,14 @@ export default function ProfileScreen(props) {
                     user_id: user.id
                 }
                 let res = await apiHandler.followUnfollowUser(token, reqObj)
+                
+                if (!res || !res.success) {
+                    setShowErrorMessage(true)
+                    setCustomToastMessage(res?.message || 'Failed to follow/unfollow user')
+                    setIsLoading(false)
+                    return
+                }
+                
                 //Handle this by getting all followers and dispatching action to redux. Or maybe handle at frontend with Redux
                 if (res.message == "User Follow") {
                     setShowCustomToast(true)

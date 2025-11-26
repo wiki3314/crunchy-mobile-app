@@ -5,11 +5,15 @@ import {
   mockRestaurants,
   getMockRestaurantsByCategory,
 } from "./mockRestaurantData";
-// For Android Emulator, use 10.0.2.2 instead of localhost
-// For iOS Simulator, use localhost or your machine's IP
-// For Real Android Device, use your computer's actual IP address
-export const BASE_URL = "http://192.168.100.14:3000/api/"; // Real device IP
-// export const BASE_URL = "http://10.0.2.2:3000/api/"; // For Android Emulator
+// ==================== BASE URL CONFIGURATION ====================
+// Android Emulator - Use 10.0.2.2 instead of localhost
+export const BASE_URL = "https://allison-avulsed-unneatly.ngrok-free.dev/api/";
+//
+// Previous configurations (commented out):
+// export const BASE_URL = "https://allison-avulsed-unneatly.ngrok-free.dev/api/"; // NGROK URL
+// export const BASE_URL = "http://192.168.100.14:3000/api/"; // Real device IP
+// export const BASE_URL = "http://localhost:3000/api/"; // iOS Simulator
+// ================================================================
 
 export const apiHandler = {
   createFormData: (reqObj) => {
@@ -41,21 +45,50 @@ export const apiHandler = {
   },
   loginUser: async (reqObj) => {
     try {
+      console.log("🔐 LOGIN API - Starting request...");
+      console.log("📍 API Endpoint:", BASE_URL + "login");
+      console.log("📤 Request payload:", reqObj);
+
       let res = await axios.post(BASE_URL + "login", reqObj, {
         headers: {
           "Content-Type": "application/json",
         },
+        timeout: 10000, // 10 second timeout
       });
+
+      console.log("✅ LOGIN API - Success:", res.data);
       return res.data;
     } catch (error) {
-      console.log("Login Error:", error);
-      console.log("Error details:", error.response?.data || error.message);
+      console.error("❌ LOGIN API ERROR - Full error:", error);
+      console.error("❌ Error message:", error.message);
+      console.error("❌ Error code:", error.code);
+      console.error("❌ Response data:", error.response?.data);
+      console.error("❌ Response status:", error.response?.status);
+      console.error("❌ API URL:", BASE_URL + "login");
+
+      // Specific error messages based on error type
+      let errorMessage = "Network error - please check backend is running";
+
+      if (error.code === "ECONNABORTED") {
+        errorMessage = "Request timeout - Backend is not responding";
+      } else if (error.code === "ECONNREFUSED") {
+        errorMessage =
+          "Connection refused - Backend is not running on " + BASE_URL;
+      } else if (
+        error.code === "ENETUNREACH" ||
+        error.code === "EHOSTUNREACH"
+      ) {
+        errorMessage =
+          "Network unreachable - Check your WiFi/network settings and BASE_URL";
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
       return {
         success: false,
-        message:
-          error.response?.data?.message ||
-          error.message ||
-          "Network error - please check backend is running",
+        message: errorMessage,
       };
     }
   },
@@ -64,7 +97,15 @@ export const apiHandler = {
       let res = await axios.post(BASE_URL + "socialLogin", reqObj);
       return res.data;
     } catch (error) {
-      console.log("Error is", error);
+      console.error("Social Login API Error:", error);
+      console.error("Error details:", error.response?.data || error.message);
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Social login failed - please check backend is running",
+      };
     }
   },
   forgotPassword: async (reqObj) => {
@@ -72,7 +113,15 @@ export const apiHandler = {
       let res = await axios.post(BASE_URL + "forgot", reqObj);
       return res.data;
     } catch (error) {
-      console.log("Error is", error);
+      console.error("Forgot Password API Error:", error);
+      console.error("Error details:", error.response?.data || error.message);
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to send password reset email - please check backend is running",
+      };
     }
   },
   getUserData: async (token) => {
@@ -102,7 +151,15 @@ export const apiHandler = {
       });
       return res.data;
     } catch (error) {
-      console.log("Error is", error);
+      console.error("Update User Profile API Error:", error);
+      console.error("Error details:", error.response?.data || error.message);
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to update profile",
+      };
     }
   },
   getAllCategories: async (token) => {
@@ -145,7 +202,8 @@ export const apiHandler = {
       let arrPostsWithoutLogin = [...placesData];
       return arrPostsWithoutLogin;
     } catch (error) {
-      console.log("Error is", error);
+      console.error("❌ Error fetching posts without login:", error);
+      return []; // Return empty array on error
     }
   },
   getPosts: async (reqOBj, radius, token, categoryNames) => {
@@ -366,18 +424,40 @@ export const apiHandler = {
       });
       return res.data;
     } catch (error) {
-      console.log("Error is", error);
+      console.error("Remove Image API Error:", error);
+      console.error("Error details:", error.response?.data || error.message);
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to remove image",
+      };
     }
   },
   saveUserPreference: async (reqObj, token) => {
     try {
-      await axios.post(BASE_URL + "user-setting", reqObj, {
+      console.log("💾 Saving user preferences:", {
+        url: BASE_URL + "user-setting",
+        payload: reqObj,
+      });
+
+      const response = await axios.post(BASE_URL + "user-setting", reqObj, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
+
+      console.log("✅ User preferences saved successfully:", response.data);
+      return response.data;
     } catch (error) {
-      console.log("Error is", error);
+      console.error("❌ Error saving user preferences:", error);
+      console.error("❌ Error details:", error.response?.data || error.message);
+      throw new Error(
+        error.response?.data?.message ||
+          error.message ||
+          "Failed to save preferences"
+      );
     }
   },
   deletePost: async (postId, token) => {
@@ -484,14 +564,40 @@ export const apiHandler = {
   },
   likeGooglePost: async (reqObj, token) => {
     try {
+      console.log("🔵 LIKE GOOGLE POST API - Starting...");
+      console.log("📍 Endpoint:", BASE_URL + "googlelike");
+      console.log("📤 Data:", JSON.stringify(reqObj, null, 2));
+
       let response = await axios.post(BASE_URL + "googlelike", reqObj, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
+        timeout: 15000, // 15 second timeout
       });
+
+      console.log("✅ LIKE GOOGLE POST API - Success:", response.data);
       return response.data;
     } catch (error) {
-      console.log("Error is", error);
+      console.error("❌ LIKE GOOGLE POST API ERROR:", error.message);
+      console.error("❌ Error code:", error.code);
+      console.error("❌ Response:", error.response?.data);
+      console.error("❌ Status:", error.response?.status);
+
+      if (error.code === "ECONNABORTED") {
+        console.error("⏱️ Request timeout - Backend not responding");
+      } else if (error.code === "ECONNREFUSED") {
+        console.error("🚫 Connection refused - Backend not running");
+      } else if (error.code === "ENETUNREACH") {
+        console.error("📡 Network unreachable - Check WiFi/network");
+      }
+
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to like Google post",
+      };
     }
   },
   getGoogleLikedPosts: async (token) => {
@@ -516,19 +622,41 @@ export const apiHandler = {
       });
       return response.data;
     } catch (error) {
-      console.log("Error is", error);
+      console.error("Get User In App Settings API Error:", error);
+      console.error("Error details:", error.response?.data || error.message);
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to get app settings",
+        data: null,
+      };
     }
   },
   saveUserInAppSettings: async (token, reqObj) => {
     try {
+      console.log("💾 Saving app settings:", {
+        url: BASE_URL + "app-setting",
+        payload: reqObj,
+      });
+
       let response = await axios.post(BASE_URL + "app-setting", reqObj, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
+
+      console.log("✅ App settings saved successfully:", response.data);
       return response.data;
     } catch (error) {
-      console.log("Error is", error);
+      console.error("❌ Error saving app settings:", error);
+      console.error("❌ Error details:", error.response?.data || error.message);
+      throw new Error(
+        error.response?.data?.message ||
+          error.message ||
+          "Failed to save app settings"
+      );
     }
   },
   getOtherUserData: async (token, userID) => {
@@ -540,7 +668,15 @@ export const apiHandler = {
       });
       return response.data.user;
     } catch (error) {
-      console.log("Error is", error);
+      console.error("Get Other User Data API Error:", error);
+      console.error("Error details:", error.response?.data || error.message);
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to get user data",
+      };
     }
   },
   followUnfollowUser: async (token, reqObj) => {
@@ -552,31 +688,145 @@ export const apiHandler = {
       });
       return response.data;
     } catch (error) {
-      console.log("Error is", error);
+      console.error("Follow/Unfollow User API Error:", error);
+      console.error("Error details:", error.response?.data || error.message);
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to follow/unfollow user",
+      };
     }
   },
   likeRestaurant: async (reqObj, token) => {
     try {
-      let response = await axios.post(BASE_URL + "favoriteplace", reqObj, {
+      console.log("🚀 LIKE RESTAURANT API - Starting...");
+      console.log("📍 Endpoint:", BASE_URL + "favoriteplace");
+      console.log("📤 Raw Data:", JSON.stringify(reqObj, null, 2));
+
+      const sanitizeNumber = (value) => {
+        const parsed = parseFloat(value);
+        return Number.isFinite(parsed) ? parsed : undefined;
+      };
+
+      const sanitizeInteger = (value) => {
+        const parsed = parseInt(value, 10);
+        return Number.isFinite(parsed) ? parsed : undefined;
+      };
+
+      const payload = {};
+      const {
+        restaurant_id,
+        google_place_id,
+        name,
+        restaurant_name,
+        photo_reference,
+        address,
+        latitude,
+        longitude,
+        rating,
+      } = reqObj || {};
+
+      const sanitizedRestaurantId = sanitizeInteger(restaurant_id);
+      if (sanitizedRestaurantId !== undefined) {
+        payload.restaurant_id = sanitizedRestaurantId;
+      }
+
+      if (google_place_id) {
+        payload.google_place_id = String(google_place_id);
+      }
+
+      if (name) {
+        payload.name = String(name);
+      }
+
+      if (restaurant_name) {
+        payload.restaurant_name = String(restaurant_name);
+      }
+
+      if (photo_reference) {
+        payload.photo_reference = String(photo_reference);
+      }
+
+      if (address) {
+        payload.address = String(address);
+      }
+
+      const sanitizedLatitude = sanitizeNumber(latitude);
+      if (sanitizedLatitude !== undefined) {
+        payload.latitude = sanitizedLatitude;
+      }
+
+      const sanitizedLongitude = sanitizeNumber(longitude);
+      if (sanitizedLongitude !== undefined) {
+        payload.longitude = sanitizedLongitude;
+      }
+
+      const sanitizedRating = sanitizeNumber(rating);
+      if (sanitizedRating !== undefined) {
+        payload.rating = sanitizedRating;
+      }
+
+      console.log("📤 Sanitized Payload:", JSON.stringify(payload, null, 2));
+
+      let response = await axios.post(BASE_URL + "favoriteplace", payload, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
+        timeout: 15000, // 15 second timeout
       });
+
+      console.log("✅ LIKE RESTAURANT API - Success:", response.data);
       return response.data;
     } catch (error) {
-      console.log("Error is", error);
+      console.error("❌ LIKE RESTAURANT API ERROR:", error.message);
+      console.error("❌ Error code:", error.code);
+      console.error("❌ Response:", error.response?.data);
+      console.error("❌ Status:", error.response?.status);
+
+      if (error.code === "ECONNABORTED") {
+        console.error("⏱️ Request timeout - Backend not responding");
+      } else if (error.code === "ECONNREFUSED") {
+        console.error("🚫 Connection refused - Backend not running");
+      } else if (error.code === "ENETUNREACH") {
+        console.error("📡 Network unreachable - Check WiFi/network");
+      }
+
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to like restaurant",
+      };
     }
   },
   getLikedRestaurants: async (token) => {
     try {
+      console.log("🍽️ FAVORITE RESTAURANTS API - Starting request...");
+      console.log("📍 API Endpoint:", BASE_URL + "userfavoriteplace");
+      console.log("🔑 Token:", token ? "Present" : "Missing");
+
       let response = await axios.get(BASE_URL + "userfavoriteplace", {
         headers: {
           Authorization: `Bearer ${token}`,
         },
+        timeout: 10000,
       });
+
+      console.log("✅ FAVORITE RESTAURANTS API - Success");
+      console.log("📦 Response data:", JSON.stringify(response.data, null, 2));
+      console.log("📊 Favorite count:", response.data.data?.length || 0);
+
       return response.data.data || [];
     } catch (error) {
-      console.log("Liked Restaurants API Error:", error);
+      console.error("❌ FAVORITE RESTAURANTS API ERROR");
+      console.error("❌ Error message:", error.message);
+      console.error("❌ Error code:", error.code);
+      console.error("❌ Response data:", error.response?.data);
+      console.error("❌ Response status:", error.response?.status);
+      console.error("❌ API URL:", BASE_URL + "userfavoriteplace");
       return []; // Return empty array on error
     }
   },
@@ -589,7 +839,9 @@ export const apiHandler = {
       });
       return response.data.data;
     } catch (error) {
-      console.log("Error is", error);
+      console.error("Get Media For Restaurant API Error:", error);
+      console.error("Error details:", error.response?.data || error.message);
+      return [];
     }
   },
   searchUser: async (token, searchQuery) => {
@@ -601,7 +853,16 @@ export const apiHandler = {
       });
       return response.data;
     } catch (error) {
-      console.log("Error is", error);
+      console.error("Search User API Error:", error);
+      console.error("Error details:", error.response?.data || error.message);
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to search users",
+        users: [],
+      };
     }
   },
   deleteUserAccount: async (token, userId) => {
@@ -613,7 +874,15 @@ export const apiHandler = {
       });
       return response.data;
     } catch (error) {
-      console.log("Error is", error);
+      console.error("Delete User Account API Error:", error);
+      console.error("Error details:", error.response?.data || error.message);
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to delete user account",
+      };
     }
   },
   getPostById: async (postId) => {
@@ -621,7 +890,15 @@ export const apiHandler = {
       let response = await axios.get(BASE_URL + "get_post/" + postId);
       return response.data;
     } catch (error) {
-      console.log("Error is", error);
+      console.error("Get Post By ID API Error:", error);
+      console.error("Error details:", error.response?.data || error.message);
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to get post",
+      };
     }
   },
   postGoogleData: async (reqObj, token) => {
@@ -633,7 +910,15 @@ export const apiHandler = {
       });
       return response.data;
     } catch (error) {
-      console.log("Error is", error);
+      console.error("Post Google Data API Error:", error);
+      console.error("Error details:", error.response?.data || error.message);
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to save Google Places data",
+      };
     }
   },
   getGoogleData: async (restaurant_id, token) => {
@@ -648,7 +933,15 @@ export const apiHandler = {
       );
       return response.data;
     } catch (error) {
-      console.log("Error is", error);
+      console.error("Get Google Data API Error:", error);
+      console.error("Error details:", error.response?.data || error.message);
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to get Google Places data",
+      };
     }
   },
   getAdminPanelAdvertisements: async (token) => {
@@ -676,7 +969,16 @@ export const apiHandler = {
       );
       return response.data;
     } catch (error) {
-      console.log("Error is", error);
+      console.error("Get User Favorite Restaurants API Error:", error);
+      console.error("Error details:", error.response?.data || error.message);
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to get favorite restaurants",
+        data: [],
+      };
     }
   },
   userSessionAPI: async (token, reqObj) => {
@@ -705,8 +1007,17 @@ export const apiHandler = {
           Authorization: `Bearer ${token}`,
         },
       });
+      return response.data;
     } catch (error) {
-      console.log("Error is", error);
+      console.error("View Advertisement API Error:", error);
+      console.error("Error details:", error.response?.data || error.message);
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to track advertisement view",
+      };
     }
   },
 };

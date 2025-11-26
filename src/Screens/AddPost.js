@@ -276,23 +276,38 @@ export default function AddPost(props) {
   async function removeImageThumbnail(selectedItem, selectedIndex) {
     setIsLoading(true);
     setLoaderTitle(`Deleting ${selectedItem.type}`);
-    let reqObj = {
-      image: selectedItem.url,
-    };
-    let response = await apiHandler.removeImage(reqObj, accessToken);
-    let arrUploadedImages = [...uploadedImages];
-    let arrUploadedImagesThumbnails = [...uploadedImagesThumbnails];
-    arrUploadedImages = arrUploadedImages.filter((item, index) => {
-      return index != selectedIndex;
-    });
-    arrUploadedImagesThumbnails = arrUploadedImagesThumbnails.filter(
-      (item, index) => {
-        return index != selectedIndex;
+    try {
+      let reqObj = {
+        image: selectedItem.url,
+      };
+      let response = await apiHandler.removeImage(reqObj, accessToken);
+      
+      if (!response || !response.success) {
+        setIsLoading(false);
+        setErrorMessage(response?.message || 'Failed to remove image');
+        setShowErrorMessage(true);
+        return;
       }
-    );
-    setUploadedImages(arrUploadedImages);
-    setUploadedImagesThumbnails(arrUploadedImagesThumbnails);
-    setIsLoading(false);
+      
+      let arrUploadedImages = [...uploadedImages];
+      let arrUploadedImagesThumbnails = [...uploadedImagesThumbnails];
+      arrUploadedImages = arrUploadedImages.filter((item, index) => {
+        return index != selectedIndex;
+      });
+      arrUploadedImagesThumbnails = arrUploadedImagesThumbnails.filter(
+        (item, index) => {
+          return index != selectedIndex;
+        }
+      );
+      setUploadedImages(arrUploadedImages);
+      setUploadedImagesThumbnails(arrUploadedImagesThumbnails);
+      setIsLoading(false);
+    } catch (error) {
+      console.error("Error removing image:", error);
+      setIsLoading(false);
+      setErrorMessage('Failed to remove image');
+      setShowErrorMessage(true);
+    }
   }
 
   const onAddImagePress = () => {
@@ -300,28 +315,40 @@ export default function AddPost(props) {
   };
 
   async function uploadMedia(reqObj) {
-    let res = await axios.post(BASE_URL + "imageupload", reqObj, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-      onUploadProgress: (progressEvent) => {
-        if (progressEvent.total) {
-          let percentage = Math.floor(
-            (progressEvent.loaded / progressEvent.total) * 100
-          );
-          console.log(
-            "Progress is",
-            percentage,
-            "Loaded:",
-            progressEvent.loaded,
-            "Total:",
-            progressEvent.total
-          );
-          setProgress(percentage);
-        }
-      },
-    });
-    return res.data;
+    try {
+      console.log("🚀 Starting media upload...");
+      let res = await axios.post(BASE_URL + "imageupload", reqObj, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "multipart/form-data",
+        },
+        onUploadProgress: (progressEvent) => {
+          if (progressEvent.total) {
+            let percentage = Math.floor(
+              (progressEvent.loaded / progressEvent.total) * 100
+            );
+            console.log(
+              "📤 Upload Progress:",
+              percentage + "%",
+              "Loaded:",
+              progressEvent.loaded,
+              "Total:",
+              progressEvent.total
+            );
+            setProgress(percentage);
+          }
+        },
+      });
+      console.log("✅ Upload successful:", res.data);
+      return res.data;
+    } catch (error) {
+      console.error("❌ Upload failed:", error);
+      console.error("Error details:", error.response?.data || error.message);
+      return {
+        success: false,
+        message: error.response?.data?.message || "Upload failed",
+      };
+    }
   }
 
   const onCameraPress = () => {
@@ -350,7 +377,9 @@ export default function AddPost(props) {
           const compressedURL = await ImageCompressor.compress(url, {
             compressionMethod: "auto",
           });
-          let objImage = {
+
+          // Store thumbnail for display
+          let thumbnailObj = {
             type: "image",
             image: {
               uri: compressedURL,
@@ -358,15 +387,31 @@ export default function AddPost(props) {
               type: response?.assets[0]?.type,
             },
           };
-          arrUploadedImagesThumbnails.push(objImage);
-          objImage = apiHandler.createFormData(objImage);
-          let uploadImage = await uploadMedia(objImage);
-          arrUploadedImages.push({
-            type: "image",
-            url: uploadImage.url, // Use 'url' which contains just the filename
+          arrUploadedImagesThumbnails.push(thumbnailObj);
+
+          // Create FormData correctly for upload
+          let formData = new FormData();
+          formData.append("image", {
+            uri: compressedURL,
+            name: response?.assets[0]?.fileName,
+            type: response?.assets[0]?.type,
           });
-          setUploadedImages(arrUploadedImages);
-          setUploadedImagesThumbnails(arrUploadedImagesThumbnails);
+
+          let uploadImage = await uploadMedia(formData);
+          console.log("Camera Upload Response:", uploadImage);
+
+          if (uploadImage && uploadImage.url) {
+            arrUploadedImages.push({
+              type: "image",
+              url: uploadImage.url,
+            });
+            setUploadedImages(arrUploadedImages);
+            setUploadedImagesThumbnails(arrUploadedImagesThumbnails);
+          } else {
+            setErrorMessage("Failed to upload image");
+            setShowErrorMessage(true);
+          }
+
           setIsUploadingMedia(false);
           setProgress(0);
         }
@@ -404,7 +449,9 @@ export default function AddPost(props) {
           const compressedURL = await VideoCompressor.compress(url, {
             compressionMethod: "auto",
           });
-          let objImage = {
+
+          // Store thumbnail for display
+          let thumbnailObj = {
             type: "video",
             image: {
               uri: compressedURL,
@@ -412,15 +459,31 @@ export default function AddPost(props) {
               type: response?.assets[0]?.type,
             },
           };
-          arrUploadedImagesThumbnails.push(objImage);
-          objImage = apiHandler.createFormData(objImage);
-          let uploadImage = await uploadMedia(objImage);
-          arrUploadedImages.push({
-            type: "video",
-            url: uploadImage.url, // Use 'url' which contains just the filename
+          arrUploadedImagesThumbnails.push(thumbnailObj);
+
+          // Create FormData correctly for upload
+          let formData = new FormData();
+          formData.append("image", {
+            uri: compressedURL,
+            name: response?.assets[0]?.fileName,
+            type: response?.assets[0]?.type,
           });
-          setUploadedImages(arrUploadedImages);
-          setUploadedImagesThumbnails(arrUploadedImagesThumbnails);
+
+          let uploadImage = await uploadMedia(formData);
+          console.log("Record Video Upload Response:", uploadImage);
+
+          if (uploadImage && uploadImage.url) {
+            arrUploadedImages.push({
+              type: "video",
+              url: uploadImage.url,
+            });
+            setUploadedImages(arrUploadedImages);
+            setUploadedImagesThumbnails(arrUploadedImagesThumbnails);
+          } else {
+            setErrorMessage("Failed to upload video");
+            setShowErrorMessage(true);
+          }
+
           setIsUploadingMedia(false);
           setProgress(0);
         }
@@ -449,7 +512,9 @@ export default function AddPost(props) {
         const compressedURL = await ImageCompressor.compress(url, {
           compressionMethod: "auto",
         });
-        let objImage = {
+
+        // Store thumbnail for display
+        let thumbnailObj = {
           type: "image",
           image: {
             uri: compressedURL,
@@ -457,15 +522,31 @@ export default function AddPost(props) {
             type: response?.assets[0]?.type,
           },
         };
-        arrUploadedImagesThumbnails.push(objImage);
-        objImage = apiHandler.createFormData(objImage);
-        let uploadImage = await uploadMedia(objImage);
-        arrUploadedImages.push({
-          type: "image",
-          url: uploadImage.url, // Use 'url' which contains just the filename
+        arrUploadedImagesThumbnails.push(thumbnailObj);
+
+        // Create FormData correctly for upload
+        let formData = new FormData();
+        formData.append("image", {
+          uri: compressedURL,
+          name: response?.assets[0]?.fileName,
+          type: response?.assets[0]?.type,
         });
-        setUploadedImages(arrUploadedImages);
-        setUploadedImagesThumbnails(arrUploadedImagesThumbnails);
+
+        let uploadImage = await uploadMedia(formData);
+        console.log("Gallery Upload Response:", uploadImage);
+
+        if (uploadImage && uploadImage.url) {
+          arrUploadedImages.push({
+            type: "image",
+            url: uploadImage.url,
+          });
+          setUploadedImages(arrUploadedImages);
+          setUploadedImagesThumbnails(arrUploadedImagesThumbnails);
+        } else {
+          setErrorMessage("Failed to upload image");
+          setShowErrorMessage(true);
+        }
+
         setIsUploadingMedia(false);
         setProgress(0);
       }
@@ -521,7 +602,9 @@ export default function AddPost(props) {
           const compressedURL = await VideoCompressor.compress(url, {
             compressionMethod: "auto",
           });
-          let objImage = {
+
+          // Store thumbnail for display
+          let thumbnailObj = {
             type: "video",
             image: {
               uri: compressedURL,
@@ -529,15 +612,31 @@ export default function AddPost(props) {
               type: response?.assets[0]?.type,
             },
           };
-          arrUploadedImagesThumbnails.push(objImage);
-          objImage = apiHandler.createFormData(objImage);
-          let uploadImage = await uploadMedia(objImage);
-          arrUploadedImages.push({
-            type: "video",
-            url: uploadImage.url, // Use 'url' which contains just the filename
+          arrUploadedImagesThumbnails.push(thumbnailObj);
+
+          // Create FormData correctly for upload
+          let formData = new FormData();
+          formData.append("image", {
+            uri: compressedURL,
+            name: response?.assets[0]?.fileName,
+            type: response?.assets[0]?.type,
           });
-          setUploadedImages(arrUploadedImages);
-          setUploadedImagesThumbnails(arrUploadedImagesThumbnails);
+
+          let uploadImage = await uploadMedia(formData);
+          console.log("Upload Video From Gallery Response:", uploadImage);
+
+          if (uploadImage && uploadImage.url) {
+            arrUploadedImages.push({
+              type: "video",
+              url: uploadImage.url,
+            });
+            setUploadedImages(arrUploadedImages);
+            setUploadedImagesThumbnails(arrUploadedImagesThumbnails);
+          } else {
+            setErrorMessage("Failed to upload video");
+            setShowErrorMessage(true);
+          }
+
           setIsUploadingMedia(false);
           setProgress(0);
         }

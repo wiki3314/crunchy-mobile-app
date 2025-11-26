@@ -5,6 +5,11 @@
 // Must be imported first to fix crypto.getRandomValues() error
 import "react-native-get-random-values";
 
+// Fix ViewPropTypes deprecation warning for older libraries
+import { View } from "react-native";
+import DeprecatedViewPropTypes from "deprecated-react-native-prop-types";
+View.propTypes = DeprecatedViewPropTypes.ViewPropTypes;
+
 import { AppRegistry } from "react-native";
 import App from "./App";
 import { name as appName } from "./app.json";

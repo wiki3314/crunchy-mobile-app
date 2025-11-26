@@ -441,11 +441,43 @@ export default function Search(props) {
 
   const onUserSearch = async (val) => {
     setSearchedName(val);
-    if (val != "") {
+    if (val && val.trim().length > 0) {
+      console.log("[Search] Initiating user search for:", val);
       setIsSearchingForUsers(true);
-      let response = await apiHandler.searchUser(accessToken, val);
-      setIsSearchingForUsers(false);
-      setSearchedUsers(response);
+      try {
+        let response = await apiHandler.searchUser(accessToken, val);
+        console.log("[Search] searchUser response:", response);
+        const users = Array.isArray(response)
+          ? response
+          : response?.users || [];
+        const normalizedUsers = users.map((user) => {
+          const profilePicture =
+            user?.profile_picture && typeof user.profile_picture === "string"
+              ? user.profile_picture
+              : null;
+          const resolvedImage =
+            profilePicture && profilePicture.startsWith("http")
+              ? profilePicture
+              : profilePicture
+              ? USER_PROFILE_BASE_URL + profilePicture
+              : null;
+          return {
+            ...user,
+            image: user?.image ?? resolvedImage,
+          };
+        });
+        setSearchedUsers(normalizedUsers);
+        if (response?.success === false && response?.message) {
+          console.log("[Search] searchUser returned error:", response.message);
+        }
+      } catch (error) {
+        console.log("[Search] searchUser threw error:", error);
+        setSearchedUsers([]);
+      } finally {
+        setIsSearchingForUsers(false);
+      }
+    } else {
+      setSearchedUsers([]);
     }
   };
 

@@ -49,6 +49,9 @@ import {
   setLikedPosts,
   setFavouritePlaces,
   setFavoriteRestaurants,
+  savePostsRadius,
+  updateFoodCategories,
+  setLoadNewPosts,
 } from "../Redux/actions/actions";
 import LoadingComponent from "../Components/LoadingComponent";
 import { appleAuth } from "@invertase/react-native-apple-authentication";
@@ -67,36 +70,25 @@ export default function PostWithoutLogin() {
     (state) => state.currentThemeSecondaryColor
   );
 
-  const images =
-    Platform.OS == "ios"
-      ? [
-          {
-            id: 0,
-            imageSource: imagePath.gmailIcon,
-          },
-          {
-            id: 1,
-            imageSource: imagePath.facebookIcon,
-          },
-          {
-            id: 2,
-            imageSource: imagePath.appleIcon,
-          },
-        ]
-      : [
-          {
-            id: 0,
-            imageSource: imagePath.gmailIcon,
-          },
-          {
-            id: 1,
-            imageSource: imagePath.facebookIcon,
-          },
-        ];
+  const images = [
+    {
+      id: 0,
+      imageSource: imagePath.gmailIcon,
+    },
+    {
+      id: 1,
+      imageSource: imagePath.facebookIcon,
+    },
+    {
+      id: 2,
+      imageSource: imagePath.appleIcon,
+    },
+  ];
 
   const allPosts = useSelector((state) => state.postsWithoutLogin);
   const userLocation = useSelector((state) => state.userLocation);
   const showForceLoginModal = useSelector((state) => state.showForceLoginModal);
+  const accessToken = useSelector((state) => state.accessToken);
 
   const listRef = useRef();
 
@@ -107,29 +99,62 @@ export default function PostWithoutLogin() {
   const dispatch = useDispatch();
 
   async function getPostsWithoutLogin() {
-    setIsLoading(true);
-    let reqObj = {
-      latitude: userLocation.latitude,
-      longitude: userLocation.longitude,
-    };
-    let postsWithoutLogin = await apiHandler.getPostsWithoutLogin(reqObj);
-    postsWithoutLogin = postsWithoutLogin.filter((item, index) => {
-      if (item) {
-        return item;
+    try {
+      console.log("📍 PostWithoutLogin: Loading posts...", {
+        hasLocation: !!userLocation,
+        latitude: userLocation?.latitude,
+        longitude: userLocation?.longitude,
+      });
+      setIsLoading(true);
+      let reqObj = {
+        latitude: userLocation.latitude,
+        longitude: userLocation.longitude,
+      };
+      let postsWithoutLogin = await apiHandler.getPostsWithoutLogin(reqObj);
+
+      if (!postsWithoutLogin) {
+        console.log("⚠️ No posts returned from API");
+        dispatch(setPostsWithoutLogin([]));
+        setIsLoading(false);
+        return;
       }
-    });
-    dispatch(setPostsWithoutLogin(postsWithoutLogin));
-    if (postsWithoutLogin && postsWithoutLogin.length > 0) {
-      listRef.current.scrollToIndex({ index: 0 });
+
+      postsWithoutLogin = postsWithoutLogin.filter((item, index) => {
+        if (item) {
+          return item;
+        }
+      });
+      console.log(
+        "✅ PostWithoutLogin: Loaded",
+        postsWithoutLogin.length,
+        "posts"
+      );
+      dispatch(setPostsWithoutLogin(postsWithoutLogin));
+      if (postsWithoutLogin && postsWithoutLogin.length > 0) {
+        listRef.current?.scrollToIndex({ index: 0 });
+      }
+      setIsLoading(false);
+    } catch (error) {
+      console.error("❌ Error loading posts without login:", error);
+      dispatch(setPostsWithoutLogin([]));
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }
 
+  // Load posts on mount and when userLocation changes
   useEffect(() => {
-    getPostsWithoutLogin();
-  }, []);
+    if (userLocation && userLocation.latitude && userLocation.longitude) {
+      getPostsWithoutLogin();
+    }
+  }, [userLocation]);
 
-  useEffect(() => {}, []);
+  // Reload posts when user logs out (accessToken becomes empty)
+  useEffect(() => {
+    if (!accessToken && userLocation) {
+      console.log("🔄 User logged out, reloading posts without login");
+      getPostsWithoutLogin();
+    }
+  }, [accessToken]);
 
   const onRegisterPress = () => {
     dispatch(showHideForceLoginModal(false));
@@ -162,12 +187,6 @@ export default function PostWithoutLogin() {
   }
 
   const onApplePress = async () => {
-    // TEMPORARILY DISABLED FOR DESIGN TESTING
-    console.log("Apple login disabled for design testing");
-    dispatch(showHideForceLoginModal(false));
-    return;
-
-    /* ORIGINAL CODE - UNCOMMENT TO ENABLE
     const appleAuthRequestResponse = await appleAuth.performRequest({
       requestedOperation: appleAuth.Operation.LOGIN,
       requestedScopes: [appleAuth.Scope.EMAIL, appleAuth.Scope.FULL_NAME],
@@ -176,8 +195,6 @@ export default function PostWithoutLogin() {
       appleAuthRequestResponse.user
     );
     if (credentialState == 1) {
-    */
-    if (false) {
       var myHeaders = new Headers();
       myHeaders.append("Content-Type", "application/json");
       let fcmToken = await AsyncStorage.getItem("fcmToken");
@@ -219,14 +236,94 @@ export default function PostWithoutLogin() {
                 dispatch(setIsNewUser(false));
               }
 
+              // Load all user data
               let categories = await apiHandler.getAllCategories(token);
               let adminAdvertisements =
                 await apiHandler.getAdminPanelAdvertisements(token);
               let session = await apiHandler.userSessionAPI(token, {});
-              dispatch(setCurrentSessionId(session.id));
+              let likedInAppPosts = await apiHandler.getFavoriteRestaurants(
+                token
+              );
+              let googlePosts = await apiHandler.getGoogleLikedPosts(token);
+              let favoriteRestaurants = await apiHandler.getLikedRestaurants(
+                token
+              );
+
+              // Get full user data to access user_settings
+              let userData =
+                response.user || (await apiHandler.getUserData(token));
+
+              // Map favorite restaurants
+              favoriteRestaurants = (favoriteRestaurants || [])
+                .map((item) => {
+                  let restaurantImage = null;
+                  if (item.google_photo_reference) {
+                    restaurantImage = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${item.google_photo_reference}&key=AIzaSyCLb-WobrzT3gvpXDLkNYPWbIpd30bxKLQ`;
+                  } else if (item.image) {
+                    restaurantImage = item.image;
+                  }
+
+                  const restaurantId =
+                    item.google_place_id || item.restaurant_id || item.id;
+
+                  return {
+                    restaurantName:
+                      item.name || item.restaurant_name || "Unknown Restaurant",
+                    restaurantImage: restaurantImage,
+                    restaurant_id: restaurantId,
+                    google_place_id: item.google_place_id,
+                  };
+                })
+                .filter((item) => item.restaurant_id && item.google_place_id);
+
+              // ✅ Load user preferences from database
+              const userSettings = userData.user_settings;
+              let hasLoadedCategories = false;
+
+              if (userSettings) {
+                console.log(
+                  "📊 Apple Login - Loading user preferences:",
+                  userSettings
+                );
+
+                if (userSettings.search_radius) {
+                  dispatch(savePostsRadius(userSettings.search_radius));
+                  console.log("✅ Loaded radius:", userSettings.search_radius);
+                }
+
+                if (
+                  userSettings.favorite_categories &&
+                  userSettings.favorite_categories.length > 0
+                ) {
+                  const savedCategories = categories.filter((cat) =>
+                    userSettings.favorite_categories.includes(cat.id)
+                  );
+                  if (savedCategories.length > 0) {
+                    dispatch(updateFoodCategories(savedCategories));
+                    console.log("✅ Loaded categories:", savedCategories);
+                    hasLoadedCategories = true;
+                  }
+                }
+              }
+
+              // ✅ If user has no saved categories, use ALL categories as default
+              if (!hasLoadedCategories && categories && categories.length > 0) {
+                console.log(
+                  "📊 Apple Login - No saved categories, loading ALL categories as default"
+                );
+                dispatch(updateFoodCategories(categories));
+              }
+
+              dispatch(setLikedPosts(likedInAppPosts || []));
+              dispatch(setFavouritePlaces(googlePosts || []));
+              dispatch(setFavoriteRestaurants(favoriteRestaurants || []));
+              dispatch(setCurrentSessionId(session?.id || 0));
               dispatch(setAdminAdvertisements(adminAdvertisements));
               dispatch(setFoodCategories(categories));
+
+              // Set token and trigger post loading together
               dispatch(setAccessToken(token));
+              dispatch(setLoadNewPosts(true));
               dispatch(showHideForceLoginModal(false));
               setIsLoading(false);
             } else {
@@ -272,19 +369,11 @@ export default function PostWithoutLogin() {
   };
 
   const loginWithFacebook = () => {
-    // TEMPORARILY DISABLED FOR DESIGN TESTING
-    console.log("Facebook login disabled for design testing");
-    dispatch(showHideForceLoginModal(false));
-    return;
-
-    /* ORIGINAL CODE - UNCOMMENT TO ENABLE
     LoginManager.logInWithPermissions([
       "public_profile",
       "email",
       "user_friends",
     ]).then((result) => {
-    */
-    Promise.resolve({ isCancelled: true }).then((result) => {
       console.log("result for the facebook ", result);
       if (result.isCancelled) {
         setIsLoading(false);
@@ -420,13 +509,91 @@ export default function PostWithoutLogin() {
           let likedInAppPosts = await apiHandler.getFavoriteRestaurants(token);
           let googlePosts = await apiHandler.getGoogleLikedPosts(token);
           let favoriteRestaurants = await apiHandler.getLikedRestaurants(token);
-          favoriteRestaurants = favoriteRestaurants.map((item, index) => {
-            return {
-              restaurantName: item.restaurant_name,
-              restaurantImage: item.image,
-              restaurant_id: item.restaurant_id,
-            };
-          });
+
+          // Get full user data to access user_settings
+          let userData = response.user || (await apiHandler.getUserData(token));
+
+          // Backend returns { id, name, google_photo_reference, ... }
+          favoriteRestaurants = favoriteRestaurants
+            .map((item, index) => {
+              // Construct Google image URL if photo reference exists
+              let restaurantImage = null;
+              if (item.google_photo_reference) {
+                restaurantImage = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${item.google_photo_reference}&key=AIzaSyCLb-WobrzT3gvpXDLkNYPWbIpd30bxKLQ`;
+              } else if (item.image) {
+                restaurantImage = item.image;
+              }
+
+              // Use google_place_id as restaurant_id for proper navigation
+              const restaurantId =
+                item.google_place_id || item.restaurant_id || item.id;
+
+              return {
+                restaurantName:
+                  item.name || item.restaurant_name || "Unknown Restaurant",
+                restaurantImage: restaurantImage,
+                restaurant_id: restaurantId,
+                google_place_id: item.google_place_id,
+              };
+            })
+            .filter((item) => {
+              // Filter out entries with incomplete/invalid data
+              const hasValidId = item.restaurant_id && item.google_place_id;
+              const hasValidName =
+                item.restaurantName &&
+                item.restaurantName !== "Unknown Restaurant";
+
+              if (!hasValidId || !hasValidName) {
+                console.log("⚠️ Skipping invalid restaurant:", {
+                  name: item.restaurantName,
+                  id: item.restaurant_id,
+                  google_place_id: item.google_place_id,
+                });
+                return false;
+              }
+              return true;
+            });
+
+          // ✅ Load user preferences from database FIRST (before setting token)
+          const userSettings = userData.user_settings;
+          let hasLoadedCategories = false;
+
+          if (userSettings) {
+            console.log(
+              "📊 Social Login - Loading user preferences from database:",
+              userSettings
+            );
+
+            // Load saved radius
+            if (userSettings.search_radius) {
+              dispatch(savePostsRadius(userSettings.search_radius));
+              console.log("✅ Loaded radius:", userSettings.search_radius);
+            }
+
+            // Load saved categories
+            if (
+              userSettings.favorite_categories &&
+              userSettings.favorite_categories.length > 0
+            ) {
+              // Map category IDs to full category objects
+              const savedCategories = categories.filter((cat) =>
+                userSettings.favorite_categories.includes(cat.id)
+              );
+              if (savedCategories.length > 0) {
+                dispatch(updateFoodCategories(savedCategories));
+                console.log("✅ Loaded categories:", savedCategories);
+                hasLoadedCategories = true;
+              }
+            }
+          }
+
+          // ✅ If user has no saved categories, use ALL categories as default
+          if (!hasLoadedCategories && categories && categories.length > 0) {
+            console.log(
+              "📊 Social Login - No saved categories, loading ALL categories as default"
+            );
+            dispatch(updateFoodCategories(categories));
+          }
 
           dispatch(setLikedPosts(likedInAppPosts));
           dispatch(setFavouritePlaces(googlePosts));
@@ -434,7 +601,10 @@ export default function PostWithoutLogin() {
           dispatch(setCurrentSessionId(session.id));
           dispatch(setAdminAdvertisements(adminAdvertisements));
           dispatch(setFoodCategories(categories));
+
+          // ⚠️ IMPORTANT: Set token and trigger post loading TOGETHER
           dispatch(setAccessToken(token));
+          dispatch(setLoadNewPosts(true)); // ✅ Trigger home screen to load posts
           console.log("✅ Access token set successfully, closing modal");
           dispatch(showHideForceLoginModal(false));
           setIsLoading(false);

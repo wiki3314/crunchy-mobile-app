@@ -137,6 +137,7 @@ export default function LandingScreen(props) {
           loop={true}
           autoplayInterval={3000}
           scrollEnabled={false}
+          keyExtractor={(item, index) => `slide-${item.id}-${index}`}
         />
       </View>
       <CommonButton

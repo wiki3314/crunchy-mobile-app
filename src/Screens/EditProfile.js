@@ -122,11 +122,21 @@ export default function EditProfile(props) {
         setShowDeleteUserModal(false)
         setLoaderTitle('Deleting')
         setIsLoading(true)
-        const response = await apiHandler.deleteUserAccount(accessToken, userData.id)
-        setIsLoading(false)
-        console.log('Delete API response is', response)
-        if (response.success) {
-            setShowDeleteConfirmation(true)
+        try {
+            const response = await apiHandler.deleteUserAccount(accessToken, userData.id)
+            setIsLoading(false)
+            console.log('Delete API response is', response)
+            if (response && response.success) {
+                setShowDeleteConfirmation(true)
+            } else {
+                setErrorMessage(response?.message || 'Failed to delete account')
+                setShowErrorMessage(true)
+            }
+        } catch (error) {
+            console.error("Error deleting user account:", error)
+            setIsLoading(false)
+            setErrorMessage('Failed to delete account')
+            setShowErrorMessage(true)
         }
     }
 

@@ -75,14 +75,21 @@ const reducer = (state = initialState, action) => {
       objState.userData = {};
       objState.showForceLoginModal = false;
       objState.loadNewPosts = true;
+      objState.allPosts = []; // Clear logged-in posts
       // Don't reset dark mode settings on logout - user preference should persist
       // objState.isDarkModeActive = false;
       // objState.autoUpdateDarkMode = true;
+
+      // Clear user-specific data
       objState.likedGooglePlaces = [];
-      objState.savedFoodCategories = [];
       objState.likedPosts = [];
       objState.favoriteRestaurants = [];
-      objState.postsRadius = 20;
+
+      // ✅ KEEP user preferences - they should persist after logout
+      // objState.savedFoodCategories = []; // DON'T clear - user preference
+      // objState.postsRadius = 20; // DON'T reset - user preference
+      // objState.userLocation - DON'T clear - needed for posts without login
+
       return objState;
     case actionTypes.SET_APP_LAUNCHED_FROM_LINK:
       objState.appLaunchedFromLink = action.payload;

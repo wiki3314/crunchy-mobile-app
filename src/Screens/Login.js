@@ -8,6 +8,7 @@ import {
   Vibration,
   View,
 } from "react-native";
+import Geolocation from "@react-native-community/geolocation";
 import AuthHeader from "../Components/AuthHeader";
 import AuthTextInput from "../Components/AuthTextInput";
 import { colors } from "../Constants/colors";
@@ -36,9 +37,13 @@ import {
   setFavouritePlaces,
   setFoodCategories,
   setLikedPosts,
+  setLoadNewPosts,
+  setLocation,
   setUserData,
   toggleDarkMode,
   updateVibrationSettings,
+  savePostsRadius,
+  updateFoodCategories,
 } from "../Redux/actions/actions";
 import LoadingComponent from "../Components/LoadingComponent";
 import { useDispatch, useSelector } from "react-redux";
@@ -46,6 +51,7 @@ import { useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import CustomToast from "../Components/CustomToast";
 import ErrorComponent from "../Components/ErrorComponent";
+import { testBackendConnection } from "../Constants/networkTest";
 // import { color } from 'react-native-reanimated';
 
 export default function Login(props) {
@@ -129,13 +135,26 @@ export default function Login(props) {
     } else {
       try {
         setIsLoading(true);
+
+        // Optional: Test network connectivity first (only in development)
+        // Uncomment the lines below if you want to test connectivity before every login
+        // console.log("🔍 Testing backend connection first...");
+        // const networkTest = await testBackendConnection();
+        // if (!networkTest.summary.allPassed) {
+        //   setErrorMessage("Cannot reach backend. Check network settings.");
+        //   setShowErrorMessage(true);
+        //   setIsLoading(false);
+        //   Vibration.vibrate(errorVibrationPattern);
+        //   return;
+        // }
+
         let reqObj = {
           email: email,
           password: password,
         };
         // Send as JSON, not FormData
         let response = await apiHandler.loginUser(reqObj);
-        console.log("Response is", response);
+        console.log("Login Response:", response);
         setIsLoading(false);
         if (response?.success) {
           AsyncStorage.setItem("isReviewPosted", "false");
@@ -147,6 +166,37 @@ export default function Login(props) {
           }
 
           try {
+            // Get location first
+            console.log("📍 Getting user location...");
+            await new Promise((resolve) => {
+              Geolocation.getCurrentPosition(
+                (info) => {
+                  const coordinates = {
+                    latitude: info.coords.latitude,
+                    longitude: info.coords.longitude,
+                  };
+                  console.log("✅ Got location:", coordinates);
+                  dispatch(setLocation(coordinates));
+                  resolve();
+                },
+                (err) => {
+                  console.log("⚠️ Location error, using default:", err);
+                  // Use default location if permission denied
+                  const defaultLocation = {
+                    latitude: 37.7749,
+                    longitude: -122.4194,
+                  };
+                  dispatch(setLocation(defaultLocation));
+                  resolve();
+                },
+                {
+                  enableHighAccuracy: false,
+                  timeout: 5000,
+                  maximumAge: 3600000,
+                }
+              );
+            });
+
             // Load all user data first
             let token = response?.token;
             await helperFunctions.storeAccessToken(token);
@@ -184,16 +234,111 @@ export default function Login(props) {
               token
             );
 
-            // Map with safety check
-            favoriteRestaurants = (favoriteRestaurants || []).map(
-              (item, index) => {
-                return {
-                  restaurantName: item.restaurant_name,
-                  restaurantImage: item.image,
-                  restaurant_id: item.restaurant_id,
-                };
-              }
+            console.log(
+              "🍽️ Raw favorite restaurants from API:",
+              favoriteRestaurants
             );
+
+            // Map with safety check - Backend returns { id, name, google_photo_reference, ... }
+            favoriteRestaurants = (favoriteRestaurants || [])
+              .map((item, index) => {
+                console.log(`🔍 Processing restaurant #${index}:`, {
+                  name: item.name,
+                  google_photo_reference: item.google_photo_reference,
+                  google_place_id: item.google_place_id,
+                  id: item.id,
+                });
+
+                // Construct Google image URL if photo reference exists
+                let restaurantImage = null;
+                if (item.google_photo_reference) {
+                  restaurantImage = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${item.google_photo_reference}&key=AIzaSyCLb-WobrzT3gvpXDLkNYPWbIpd30bxKLQ`;
+                  console.log(
+                    `✅ Image URL created:`,
+                    restaurantImage.substring(0, 80) + "..."
+                  );
+                } else if (item.image) {
+                  restaurantImage = item.image;
+                  console.log(`✅ Using item.image:`, restaurantImage);
+                } else {
+                  console.log(
+                    `❌ No photo_reference or image found for:`,
+                    item.name
+                  );
+                }
+
+                // Use google_place_id as restaurant_id for proper navigation
+                const restaurantId =
+                  item.google_place_id || item.restaurant_id || item.id;
+
+                return {
+                  restaurantName:
+                    item.name || item.restaurant_name || "Unknown Restaurant",
+                  restaurantImage: restaurantImage,
+                  restaurant_id: restaurantId,
+                  google_place_id: item.google_place_id,
+                };
+              })
+              .filter((item) => {
+                // Filter out entries with incomplete/invalid data
+                const hasValidId = item.restaurant_id && item.google_place_id;
+                const hasValidName =
+                  item.restaurantName &&
+                  item.restaurantName !== "Unknown Restaurant";
+
+                if (!hasValidId || !hasValidName) {
+                  console.log("⚠️ Skipping invalid restaurant:", {
+                    name: item.restaurantName,
+                    id: item.restaurant_id,
+                    google_place_id: item.google_place_id,
+                  });
+                  return false;
+                }
+                return true;
+              });
+
+            console.log("🍽️ Mapped favorite restaurants:", favoriteRestaurants);
+
+            // ✅ Load user preferences from database FIRST (before setting token)
+            const userSettings = userData.user_settings;
+            let hasLoadedCategories = false;
+
+            if (userSettings) {
+              console.log(
+                "📊 Loading user preferences from database:",
+                userSettings
+              );
+
+              // Load saved radius
+              if (userSettings.search_radius) {
+                dispatch(savePostsRadius(userSettings.search_radius));
+                console.log("✅ Loaded radius:", userSettings.search_radius);
+              }
+
+              // Load saved categories
+              if (
+                userSettings.favorite_categories &&
+                userSettings.favorite_categories.length > 0
+              ) {
+                // Map category IDs to full category objects
+                const savedCategories = categories.filter((cat) =>
+                  userSettings.favorite_categories.includes(cat.id)
+                );
+                if (savedCategories.length > 0) {
+                  dispatch(updateFoodCategories(savedCategories));
+                  console.log("✅ Loaded categories:", savedCategories);
+                  hasLoadedCategories = true;
+                }
+              }
+            }
+
+            // ✅ If user has no saved categories, use ALL categories as default
+            if (!hasLoadedCategories && categories && categories.length > 0) {
+              console.log(
+                "📊 No saved categories, loading ALL categories as default"
+              );
+              dispatch(updateFoodCategories(categories));
+            }
 
             // Dispatch all data to Redux
             dispatch(setCurrentSessionId(session?.id || 0));
@@ -206,7 +351,10 @@ export default function Login(props) {
             dispatch(enableDarkModeAutoUpdate(isToggleDarkMode));
             dispatch(updateVibrationSettings(isVibrationEnabled));
             dispatch(setUserData(userData));
+
+            // ⚠️ IMPORTANT: Set token and trigger post loading TOGETHER at the end
             dispatch(setAccessToken(token));
+            dispatch(setLoadNewPosts(true)); // ✅ This will trigger home screen to load posts
 
             // Show success ONLY after all data loaded successfully
             setShowCustomToast(true);

@@ -53,6 +53,7 @@ import {
   setLoadRandomPosts,
   setSearchingForQuickBites,
   setUserData,
+  setFavoriteRestaurants,
   updateFavoriteRestaurants,
   updateFavouritePlaces,
   updateLikedPosts,
@@ -161,17 +162,40 @@ export default function SinglePostComponent({}) {
   const isFocused = useIsFocused();
 
   useEffect(() => {
-    if (loadNewPosts) {
+    console.log("🔄 SinglePostComponent useEffect triggered", {
+      isFocused,
+      loadNewPosts,
+      hasAccessToken: !!accessToken,
+      hasUserLocation: !!userLocation,
+      categoriesCount: savedFoodCategories?.length,
+    });
+
+    if (loadNewPosts && accessToken && userLocation) {
+      console.log("✅ Calling getServerPosts with:", {
+        latitude: userLocation.latitude,
+        longitude: userLocation.longitude,
+        categories: savedFoodCategories?.length,
+        radius: savedPostsRadius,
+      });
       setCurrentIncrementValue(1);
       getServerPosts();
+    } else {
+      console.log("⚠️ Not loading posts because:", {
+        loadNewPosts,
+        hasAccessToken: !!accessToken,
+        hasUserLocation: !!userLocation,
+        userLocationValue: userLocation,
+      });
     }
+
     allPosts.map((item, index) => {
       item.isPaused = true;
     });
+
     if (searchingForQuickBites) {
       searchQuickBitesPlaces();
     }
-  }, [isFocused]);
+  }, [isFocused, loadNewPosts, accessToken, userLocation]);
 
   const searchQuickBitesPlaces = async () => {
     try {
@@ -200,6 +224,9 @@ export default function SinglePostComponent({}) {
             restaurantTiming: item.opening_hours,
             restaurant_id: item.place_id,
             isGoogle: true,
+            address: item.vicinity || null,
+            latitude: item.geometry?.location?.lat || null,
+            longitude: item.geometry?.location?.lng || null,
           };
         }
       });
@@ -296,7 +323,6 @@ export default function SinglePostComponent({}) {
       }
       response = response.map((item, index) => {
         if (item) {
-          console.log("Item is", item);
           return {
             ...item,
             isPaused: true,
@@ -469,6 +495,10 @@ export default function SinglePostComponent({}) {
   };
 
   const onLikeUnlikePostPress = async (post, isLiked) => {
+    console.log("❤️ Heart button clicked!");
+    console.log("  - Restaurant:", post.restaurantName);
+    console.log("  - Is already liked:", isLiked);
+
     // setIsLoading(true)
     if (!isLiked) {
       setLikingPost(true);
@@ -488,6 +518,8 @@ export default function SinglePostComponent({}) {
         });
       });
     }
+
+    // Redux state update with full image URL
     let objRestaurant = {
       restaurant_id: post.restaurant_id,
       restaurantName: post.restaurantName,
@@ -495,13 +527,70 @@ export default function SinglePostComponent({}) {
     };
     dispatch(updateFavoriteRestaurants(objRestaurant));
     dispatch(updateFavouritePlaces(objRestaurant));
+
+    // Backend API call with proper Google data
     let objPost = {
-      restaurant_id: post.restaurant_id,
+      google_place_id: post.restaurant_id, // Google place ID
+      name: post.restaurantName || "Unknown Restaurant",
+      photo_reference: post.restaurantImage, // Just the photo reference, not full URL
+      rating: post.restaurantRating || null,
       restaurant_name: post.restaurantName,
-      image: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${windowWidth}&photo_reference=${post.restaurantImage}&key=${GOOGLE_API_KEY}`,
+      address: post.address || null,
+      latitude: post.latitude || null,
+      longitude: post.longitude || null,
     };
+
+    console.log("🍽️ Saving Google restaurant from home screen:");
+    console.log("  - Name:", objPost.name);
+    console.log("  - Google Place ID:", objPost.google_place_id);
+    console.log("  - Photo Reference:", objPost.photo_reference);
+    console.log("  - Address:", objPost.address);
+    console.log("  - Rating:", objPost.rating);
+
+    console.log("📞 Calling API now...");
     await apiHandler.likeGooglePost(objPost, accessToken);
     await apiHandler.likeRestaurant(objPost, accessToken);
+    console.log("📞 API calls completed");
+
+    // Fetch fresh data from backend
+    console.log("🔄 Fetching fresh favorites from backend...");
+    let freshFavorites = await apiHandler.getLikedRestaurants(accessToken);
+    console.log("📦 Fresh favorites received:", freshFavorites.length);
+
+    // Map the data properly
+    let mappedFavorites = (freshFavorites || [])
+      .map((item) => {
+        let restaurantImage = null;
+        if (item.google_photo_reference) {
+          restaurantImage = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${item.google_photo_reference}&key=${GOOGLE_API_KEY}`;
+        } else if (item.image) {
+          restaurantImage = item.image;
+        }
+
+        return {
+          restaurantName:
+            item.name || item.restaurant_name || "Unknown Restaurant",
+          restaurantImage: restaurantImage,
+          restaurant_id: item.google_place_id || item.restaurant_id || item.id,
+          google_place_id: item.google_place_id,
+        };
+      })
+      .filter((item) => {
+        return (
+          item.restaurant_id &&
+          item.google_place_id &&
+          item.restaurantName !== "Unknown Restaurant"
+        );
+      });
+
+    // Update Redux with fresh data
+    dispatch(setFavoriteRestaurants(mappedFavorites));
+    console.log(
+      "✅ Redux updated with fresh favorites:",
+      mappedFavorites.length
+    );
+
+    console.log("✅ Restaurant saved successfully");
   };
 
   const likeUnlikeInAppPosts = async (post, isLiked) => {
@@ -583,18 +672,38 @@ export default function SinglePostComponent({}) {
             restaurantImage = POSTS_IMAGE_BASE_URL + post.file[0].filenames;
           }
 
+          // Send proper data to backend for in-app posts
           let requestObject = {
             restaurant_id: post.restaurant_id,
+            name: restaurantName, // Backend expects 'name', not 'restaurant_name'
             restaurant_name: restaurantName,
-            image: restaurantImage,
+            // If this is from Google Places, include that data
+            google_place_id: post.google_place_id || undefined,
+            photo_reference: post.google_photo_reference || undefined,
+            address: post.address || undefined,
+            latitude:
+              post.latitude !== undefined && post.latitude !== null
+                ? parseFloat(post.latitude)
+                : undefined,
+            longitude:
+              post.longitude !== undefined && post.longitude !== null
+                ? parseFloat(post.longitude)
+                : undefined,
+            rating:
+              post.rating !== undefined && post.rating !== null
+                ? parseFloat(post.rating)
+                : undefined,
           };
 
           let objRestaurant = {
             restaurant_id: post.restaurant_id,
             restaurantName: restaurantName,
             restaurantImage: restaurantImage,
+            google_place_id: post.google_place_id || null,
+            google_photo_reference: post.google_photo_reference || null,
           };
 
+          console.log("🍽️ Saving in-app restaurant:", requestObject);
           dispatch(updateFavoriteRestaurants(objRestaurant));
           await apiHandler.likeRestaurant(requestObject, accessToken);
           console.log("✅ Restaurant favorited successfully");
@@ -1543,8 +1652,6 @@ export default function SinglePostComponent({}) {
 
   const listKeyExtractor = useCallback((item, index) => index.toString(), []);
 
-  console.log("All posts are", allPosts);
-
   return (
     <View
       style={[
@@ -1708,7 +1815,10 @@ export default function SinglePostComponent({}) {
               advertisement_id: allPosts[currentIndex].id,
               user_id: userDetails.id,
             };
-            apiHandler.viewAdvertisement(objAd, accessToken);
+            // Fire and forget - track ad view, don't show errors to user
+            apiHandler.viewAdvertisement(objAd, accessToken).catch((error) => {
+              console.warn("Failed to track advertisement view:", error);
+            });
           }
         }}
         onEndReached={() => {

@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { commonStyles } from "../Constants/commonStyles";
 import {
+  GOOGLE_API_KEY,
   moderateScale,
   POSTS_IMAGE_BASE_URL,
   ratingsData,
@@ -95,13 +96,212 @@ export default function ProfileScreen(props) {
     }
   }, [isFocused]);
 
+  const resolveRestaurantImage = (item) => {
+    if (!item) {
+      return null;
+    }
+
+    const isValidString = (value) =>
+      typeof value === "string" && value.trim().length > 0;
+
+    const ensureAbsoluteUrl = (value) => {
+      if (!isValidString(value)) {
+        return null;
+      }
+      if (value.startsWith("http://") || value.startsWith("https://")) {
+        return value;
+      }
+      // Strip any leading slash before concatenating
+      const sanitized = value.startsWith("/") ? value.substring(1) : value;
+      return `${POSTS_IMAGE_BASE_URL}${sanitized}`;
+    };
+
+    // 1. Prefer explicit image fields already stored in Redux objects
+    const directImage =
+      item.restaurantImage ||
+      item.restaurant_image ||
+      item.image ||
+      item.restaurantImageUrl;
+    const resolvedDirectImage = ensureAbsoluteUrl(directImage);
+    if (resolvedDirectImage) {
+      return resolvedDirectImage;
+    }
+
+    // 2. Fallback to Google photo reference if available
+    const photoReference =
+      item.google_photo_reference ||
+      item.googlePhotoReference ||
+      item.photo_reference;
+    if (isValidString(photoReference)) {
+      return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${encodeURIComponent(
+        photoReference
+      )}&key=${GOOGLE_API_KEY}`;
+    }
+
+    return null;
+  };
+
+  const normalizeFavoriteRestaurant = (item, index) => {
+    if (!item) {
+      return null;
+    }
+
+    const originalRestaurantId =
+      item.restaurant_id !== undefined ? item.restaurant_id : item.id;
+    const parsedRestaurantId =
+      originalRestaurantId !== undefined &&
+      !Number.isNaN(parseInt(originalRestaurantId, 10))
+        ? parseInt(originalRestaurantId, 10)
+        : null;
+    const googlePlaceId =
+      item.google_place_id ||
+      (typeof originalRestaurantId === "string" &&
+      originalRestaurantId.trim().length > 0 &&
+      Number.isNaN(parseInt(originalRestaurantId, 10))
+        ? originalRestaurantId
+        : null);
+
+    const restaurantName =
+      item.restaurantName ||
+      item.name ||
+      item.restaurant_name ||
+      "Unknown Restaurant";
+    const restaurantId =
+      parsedRestaurantId !== null
+        ? parsedRestaurantId
+        : originalRestaurantId || googlePlaceId || null;
+
+    const normalized = {
+      ...item,
+      restaurantName,
+      restaurant_id: restaurantId,
+      google_place_id: googlePlaceId || null,
+      google_photo_reference:
+        item.google_photo_reference || item.photo_reference || null,
+      address: item.address || item.location || null,
+      latitude:
+        item.latitude !== undefined
+          ? item.latitude
+          : item.lat !== undefined
+          ? item.lat
+          : null,
+      longitude:
+        item.longitude !== undefined
+          ? item.longitude
+          : item.lng !== undefined
+          ? item.lng
+          : null,
+      rating:
+        item.rating !== undefined
+          ? item.rating
+          : item.google_rating !== undefined
+          ? item.google_rating
+          : null,
+    };
+
+    const restaurantImage = resolveRestaurantImage(item);
+
+    if (restaurantImage) {
+      normalized.restaurantImage = restaurantImage;
+    }
+
+    if (index === 0) {
+      console.log("🍽️ Normalized favorite restaurant:", normalized);
+    }
+
+    return normalized;
+  };
+
+  const buildFavoriteRequestPayload = (restaurant) => {
+    if (!restaurant) {
+      return {};
+    }
+
+    const requestPayload = {};
+    const nameValue =
+      restaurant.restaurantName ||
+      restaurant.name ||
+      restaurant.restaurant_name ||
+      "Unknown Restaurant";
+
+    if (restaurant.restaurant_id !== undefined) {
+      const parsedId = parseInt(restaurant.restaurant_id, 10);
+      if (Number.isFinite(parsedId)) {
+        requestPayload.restaurant_id = parsedId;
+      }
+    }
+
+    if (
+      restaurant.id !== undefined &&
+      requestPayload.restaurant_id === undefined
+    ) {
+      const parsedId = parseInt(restaurant.id, 10);
+      if (Number.isFinite(parsedId)) {
+        requestPayload.restaurant_id = parsedId;
+      }
+    }
+
+    if (restaurant.google_place_id) {
+      requestPayload.google_place_id = restaurant.google_place_id;
+    }
+
+    requestPayload.name = nameValue;
+    requestPayload.restaurant_name = nameValue;
+
+    if (restaurant.google_photo_reference) {
+      requestPayload.photo_reference = restaurant.google_photo_reference;
+    } else if (restaurant.photo_reference) {
+      requestPayload.photo_reference = restaurant.photo_reference;
+    }
+
+    if (restaurant.address) {
+      requestPayload.address = restaurant.address;
+    }
+
+    const parsedLatitude = parseFloat(restaurant.latitude);
+    if (Number.isFinite(parsedLatitude)) {
+      requestPayload.latitude = parsedLatitude;
+    }
+
+    const parsedLongitude = parseFloat(restaurant.longitude);
+    if (Number.isFinite(parsedLongitude)) {
+      requestPayload.longitude = parsedLongitude;
+    }
+
+    const parsedRating = parseFloat(restaurant.rating);
+    if (Number.isFinite(parsedRating)) {
+      requestPayload.rating = parsedRating;
+    }
+
+    return requestPayload;
+  };
+
   useEffect(() => {
-    setFavRestaurants(favoriteRestaurants);
+    const normalizedFavorites = (favoriteRestaurants || [])
+      .map(normalizeFavoriteRestaurant)
+      .filter(Boolean);
+    setFavRestaurants(normalizedFavorites);
   }, [favoriteRestaurants]);
 
   const onSingleRestaurantPress = (item) => {
-    navigation.navigate(navigationStrings.RestaurantDetails, {
+    console.log("🔍 Clicked saved restaurant:", {
       restaurant_id: item.restaurant_id,
+      google_place_id: item.google_place_id,
+      restaurantName: item.restaurantName,
+      restaurantImage: item.restaurantImage,
+    });
+
+    const navigationRestaurantId =
+      item.google_place_id || item.restaurant_id || item.id;
+
+    if (!navigationRestaurantId) {
+      setErrorMessage("Restaurant ID missing. Cannot open details.");
+      setShowErrorMessage(true);
+      return;
+    }
+
+    navigation.navigate(navigationStrings.RestaurantDetails, {
+      restaurant_id: navigationRestaurantId,
       fromFavourites: true,
     });
   };
@@ -112,6 +312,16 @@ export default function ProfileScreen(props) {
   }
 
   function renderRestaurent(item, index) {
+    // Debug log to see what data we have
+    if (index === 0) {
+      console.log("📱 Rendering saved restaurant:", {
+        restaurantName: item.restaurantName,
+        restaurant_id: item.restaurant_id,
+        hasImage: !!item.restaurantImage,
+        imageUrl: item.restaurantImage,
+      });
+    }
+
     return (
       <TouchableOpacity
         onPress={() => {
@@ -131,8 +341,13 @@ export default function ProfileScreen(props) {
             alignItems: "center",
             justifyContent: "center",
             marginTop: moderateScale(4),
+            backgroundColor: colors.grey,
           }}
-          source={{ uri: item.restaurantImage }}
+          source={
+            item.restaurantImage
+              ? { uri: item.restaurantImage }
+              : imagePath.americanFoodImage
+          }
         >
           <Text
             numberOfLines={2}
@@ -833,18 +1048,35 @@ export default function ProfileScreen(props) {
 
   async function onUnlikeRestaurantConfirm() {
     setShowRestaurantOptions(false);
-    let objRestaurant = {
-      restaurant_id: selectedRestaurant.restaurant_id,
-      restaurantName: selectedRestaurant.restaurantName,
-      restaurantImage: selectedRestaurant.restaurantImage,
-    };
-    dispatch(updateFavoriteRestaurants(objRestaurant));
-    let objPost = {
-      restaurant_id: selectedRestaurant.restaurant_id,
-      restaurant_name: selectedRestaurant.restaurantName,
-      image: selectedRestaurant.restaurantImage,
-    };
-    await apiHandler.likeRestaurant(objPost, token);
+    const requestPayload = buildFavoriteRequestPayload(selectedRestaurant);
+    console.log(
+      "🍽️ Sending unlike payload:",
+      JSON.stringify(requestPayload, null, 2)
+    );
+
+    try {
+      const response = await apiHandler.likeRestaurant(requestPayload, token);
+      if (!response || response.success === false) {
+        const errorMsg =
+          response?.message || "Failed to update favorite status.";
+        setErrorMessage(errorMsg);
+        setShowErrorMessage(true);
+        return;
+      }
+
+      const objRestaurant = {
+        restaurant_id: selectedRestaurant.restaurant_id,
+        restaurantName: selectedRestaurant.restaurantName,
+        restaurantImage: selectedRestaurant.restaurantImage,
+      };
+      dispatch(updateFavoriteRestaurants(objRestaurant));
+      setCustomToastMessage("Removed from liked places");
+      setShowCustomToast(true);
+    } catch (error) {
+      console.log("❌ Unlike restaurant error:", error);
+      setErrorMessage("Failed to update favorite status.");
+      setShowErrorMessage(true);
+    }
   }
 
   const showHideDeletePostModal = (item) => {
@@ -1202,7 +1434,11 @@ export default function ProfileScreen(props) {
               <View style={commonStyles.flexFull}>
                 {showFollowers ? (
                   <FlatList
-                    data={userDetails && userDetails.followers}
+                    data={
+                      userDetails && userDetails.followers
+                        ? userDetails.followers
+                        : []
+                    }
                     renderItem={renderSingleFollower}
                     ListEmptyComponent={() => {
                       return (
@@ -1227,7 +1463,11 @@ export default function ProfileScreen(props) {
                   />
                 ) : (
                   <FlatList
-                    data={userDetails && userDetails.following}
+                    data={
+                      userDetails && userDetails.following
+                        ? userDetails.following
+                        : []
+                    }
                     renderItem={renderSingleFollowing}
                     ListEmptyComponent={() => {
                       return (

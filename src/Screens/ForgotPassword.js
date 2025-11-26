@@ -50,9 +50,14 @@ export default function ForgotPassword(props) {
             let reqObj = {
                 email: email
             }
-            await apiHandler.forgotPassword(reqObj)
+            let response = await apiHandler.forgotPassword(reqObj)
             setIsLoading(false)
-            setShowCustomToast(true)
+            if (response && response.success) {
+                setShowCustomToast(true)
+            } else {
+                setErrorMessage(response?.message || 'Failed to send password reset email')
+                setShowErrorMessage(true)
+            }
         }
         else {
             setErrorMessage('Please enter a valid email address')
