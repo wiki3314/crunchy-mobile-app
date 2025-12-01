@@ -19,11 +19,12 @@ export const VIBRATION_PATTERN = [0, 100];
 
 export const ratingsData = [1, 2, 3, 4, 5];
 
-// Android Emulator - Use 10.0.2.2 instead of localhost
-const BACKEND_BASE_URL = "https://allison-avulsed-unneatly.ngrok-free.dev";
+// Production Backend URL
+const BACKEND_BASE_URL = "http://54.193.173.26:3000";
 // Previous configurations (commented out):
 // const BACKEND_BASE_URL = "https://allison-avulsed-unneatly.ngrok-free.dev"; // NGROK URL
 // const BACKEND_BASE_URL = "http://192.168.100.14:3000"; // Real device IP
+// const BACKEND_BASE_URL = "http://10.0.2.2:3000"; // Android Emulator
 
 export const POSTS_IMAGE_BASE_URL = `${BACKEND_BASE_URL}/storage/`;
 

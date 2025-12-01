@@ -6,13 +6,14 @@ import {
   getMockRestaurantsByCategory,
 } from "./mockRestaurantData";
 // ==================== BASE URL CONFIGURATION ====================
-// Android Emulator - Use 10.0.2.2 instead of localhost
-export const BASE_URL = "https://allison-avulsed-unneatly.ngrok-free.dev/api/";
+// Production Backend URL
+export const BASE_URL = "http://54.193.173.26:3000/api/";
 //
 // Previous configurations (commented out):
 // export const BASE_URL = "https://allison-avulsed-unneatly.ngrok-free.dev/api/"; // NGROK URL
 // export const BASE_URL = "http://192.168.100.14:3000/api/"; // Real device IP
 // export const BASE_URL = "http://localhost:3000/api/"; // iOS Simulator
+// export const BASE_URL = "http://10.0.2.2:3000/api/"; // Android Emulator
 // ================================================================
 
 export const apiHandler = {
