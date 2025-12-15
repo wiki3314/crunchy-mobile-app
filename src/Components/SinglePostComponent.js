@@ -78,12 +78,8 @@ import ErrorComponent from "./ErrorComponent";
 import InAppReview from "react-native-in-app-review";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import DoubleClick from "./DoubleClick";
-// import Share from 'react-native-share';
-// const bannerAdId = Platform.OS == 'android' ? 'ca-app-pub-8426298054726789/4881281307' : 'ca-app-pub-8426298054726789/5152744042'
-
-// var RNFS = require('react-native-fs');
-
-// const bannerAdId = Platform.OS == 'android' ? "ca-app-pub-3940256099942544/6300978111" : 'ca-app-pub-3940256099942544/2934735716'
+import Share from "react-native-share";
+const RNFS = require("react-native-fs");
 
 export default function SinglePostComponent({}) {
   const tabBarData = [
@@ -247,6 +243,9 @@ export default function SinglePostComponent({}) {
               adType: randomAdvertisment.mediaType,
               adMediaSource: randomAdvertisment.mediaSource,
             });
+          } else {
+            // If no ads available, still push the post
+            arrPostsWithAdminAds.push(placesData[i]);
           }
         } else {
           arrPostsWithAdminAds.push(placesData[i]);
@@ -345,6 +344,9 @@ export default function SinglePostComponent({}) {
               adType: randomAdvertisment.mediaType,
               adMediaSource: randomAdvertisment.mediaSource,
             });
+          } else {
+            // If no ads available, still push the post
+            arrPostsWithAdminAds.push(response[i]);
           }
         } else {
           arrPostsWithAdminAds.push(response[i]);
@@ -452,6 +454,9 @@ export default function SinglePostComponent({}) {
               adType: randomAdvertisment.mediaType,
               adMediaSource: randomAdvertisment.mediaSource,
             });
+          } else {
+            // If no ads available, still push the post
+            arrPostsWithAdminAds.push(response[i]);
           }
         } else {
           arrPostsWithAdminAds.push(response[i]);
@@ -491,6 +496,11 @@ export default function SinglePostComponent({}) {
   };
 
   const onCommentPress = () => {
+    if (!accessToken || !userDetails) {
+      setErrorMessage("Please login to comment");
+      setShowErrorMessage(true);
+      return;
+    }
     setShowCommentModal(true);
   };
 
@@ -918,58 +928,85 @@ export default function SinglePostComponent({}) {
 
   const onShare = async (item) => {
     const path = `${RNFS.DocumentDirectoryPath}/${item.restaurant_id}.jpg`;
-    let sharedLink = "";
+    let sharedLink = '';
+
     if (item.isGoogle) {
-      sharedLink = `googlePost/?${item.restaurant_id}`;
+      // Dynamic link for Google Place post
+      const placeId = item.restaurant_id || item.place_id || '';
+      sharedLink = `googlePost/?${placeId}`;
     } else {
+      // Dynamic link for in-app (Crunchy) post
       sharedLink = `applicationPost/?${item.restaurant_id}`;
     }
-    setIsLoading(true);
-    setLoaderTitle("Generating share link");
-    let link = await firebase.dynamicLinks().buildShortLink(
-      {
-        link: `http://invertase.io/` + sharedLink,
-        android: {
-          packageName: "com.crunchy",
-        },
-        ios: {
-          bundleId: "com.crunchy",
-          appStoreId: "F8CM492S3P",
-        },
-        domainUriPrefix: "https://crunchyapp.page.link",
-      },
-      firebase.dynamicLinks.ShortLinkType.UNGUESSABLE
-    );
-    let base64Image;
-    if (item.isGoogle) {
-      await RNFS.downloadFile({
-        fromUrl: `https://maps.googleapis.com/maps/api/place/photo?photo_reference=${item.restaurantImage}&key=${GOOGLE_API_KEY}`,
-        toFile: `file://${path}`,
-      }).promise;
-      base64Image = await RNFS.readFile(`file://${path}`, "base64");
-    }
-    const shareOptions = {
-      title: "Found this on Crunchii",
-      message:
-        "Hey! I found this restaurant on Crunchii, check it out. \n" + link,
-      url: `data:image/jpeg;base64,${base64Image}`,
-    };
-    setIsLoading(false);
-    Share.open(shareOptions);
-    // if (Platform.OS == 'ios') {
 
-    //     await Share.share({
-    //         message: 'Hey! I found this restaurant on Crunchii, check it out. \n',
-    //         url: link,
-    //         title: 'Found this on Crunchii'
-    //     })
-    // }
-    // else {
-    //     await Share.share({
-    //         message: 'Hey! I found this restaurant on Crunchii, check it out. \n' + link,
-    //         title: 'Found this on Crunchii'
-    //     })
-    // }
+    try {
+      setIsLoading(true);
+      setLoaderTitle('Generating share link');
+
+      // Fallback link in case Dynamic Links API is not available
+      let link = `https://crunchyapp.page.link/${sharedLink}`;
+
+      try {
+        // Try to build a Firebase Dynamic Link (may fail on some devices/emulators)
+        link = await firebase.dynamicLinks().buildShortLink(
+          {
+            link: `http://invertase.io/` + sharedLink,
+            android: {
+              packageName: 'com.crunchy',
+            },
+            ios: {
+              bundleId: 'com.crunchy',
+              appStoreId: 'F8CM492S3P',
+            },
+            domainUriPrefix: 'https://crunchyapp.page.link',
+          },
+          firebase.dynamicLinks.ShortLinkType.UNGUESSABLE,
+        );
+      } catch (e) {
+        console.warn(
+          'Dynamic Links not available, using fallback URL instead:',
+          e?.message || e,
+        );
+        // Continue with fallback link
+      }
+
+      let base64Image;
+
+      // Only try to download an image for Google Places posts,
+      // and don't block sharing if the download fails.
+      if (item.isGoogle && item?.restaurantImage) {
+        try {
+          const filePath = `${RNFS.DocumentDirectoryPath}/${item.restaurant_id}.jpg`;
+          await RNFS.downloadFile({
+            // item.restaurantImage is already a full Google photo URL
+            fromUrl: item.restaurantImage,
+            toFile: filePath,
+          }).promise;
+          base64Image = await RNFS.readFile(filePath, 'base64');
+        } catch (e) {
+          console.warn(
+            'Failed to load Google image for share, will share text only:',
+            e?.message || e,
+          );
+          // Keep base64Image undefined so we still share the link text
+          base64Image = null;
+        }
+      }
+
+      const shareOptions = {
+        title: 'Found this on Crunchii',
+        message: `Hey! I found this restaurant on Crunchii, check it out.\n${link}`,
+        ...(base64Image && {
+          url: `data:image/jpeg;base64,${base64Image}`,
+        }),
+      };
+
+      await Share.open(shareOptions);
+    } catch (error) {
+      console.error('Share Error:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const onVideoPress = (val) => {
@@ -1237,50 +1274,62 @@ export default function SinglePostComponent({}) {
   };
 
   const commentOnPost = async () => {
+    if (!accessToken || !userDetails) {
+      setShowCommentModal(false);
+      setErrorMessage("Please login to comment");
+      setShowErrorMessage(true);
+      return;
+    }
     if (comment.trim() == "") {
       setShowCommentModal(false);
       setErrorMessage("Review can not be empty");
       setShowErrorMessage(true);
     } else {
+      // Save comment value before clearing it (bug fix from old project)
+      const commentText = comment;
+
       setShowCommentModal(false);
       setIsLoading(true);
       setLoaderTitle("Posting your review");
 
+      // Optimistic update - update Redux immediately (old project pattern)
+      let objData = {
+        comment: commentText,
+        created_at: new Date(),
+        user: userDetails,
+      };
+      let objPayload = {
+        type: "comment",
+        post_id: postDetails.id,
+        data: objData,
+      };
+      dispatch(updatePost(objPayload));
+      setComment("");
+      setCustomToastMessage("Review posted successfully");
+      setIsLoading(false);
+      setShowCustomToast(true);
+
+      // Make API call in background (old project pattern)
       let reqObj = {
         post_id: postDetails.id,
-        comment: comment,
+        comment: commentText,
         created_id: postDetails.user_id,
       };
 
       try {
         const response = await apiHandler.commentOnPost(reqObj, accessToken);
-
-        if (response && response.success) {
-          let objData = comment;
-          objData = {
-            comment: comment,
-            created_at: new Date(),
-            user: userDetails,
-          };
-          let objPayload = {
-            type: "comment",
-            post_id: postDetails.id,
-            data: objData,
-          };
-          dispatch(updatePost(objPayload));
-          setComment("");
-          setCustomToastMessage("Review posted successfully");
-          setShowCustomToast(true);
-        } else {
-          setErrorMessage(response?.message || "Failed to post comment");
-          setShowErrorMessage(true);
+        // If API fails, we don't show error (optimistic update pattern)
+        // The comment is already shown in UI
+        if (!response || !response.success) {
+          console.log(
+            "Comment API failed but UI already updated:",
+            response?.message
+          );
         }
-        setIsLoading(false);
       } catch (error) {
-        console.error("Comment Error:", error);
-        setErrorMessage("Failed to post comment. Please try again.");
-        setShowErrorMessage(true);
-        setIsLoading(false);
+        console.error("Comment API Error:", error);
+        // Don't show error to user, just log it
+        // The comment is already visible in UI (optimistic update pattern)
       }
     }
   };

@@ -6,14 +6,12 @@ import {
   getMockRestaurantsByCategory,
 } from "./mockRestaurantData";
 // ==================== BASE URL CONFIGURATION ====================
-// Production Backend URL
-export const BASE_URL = "http://54.193.173.26:3000/api/";
-//
-// Previous configurations (commented out):
-// export const BASE_URL = "https://allison-avulsed-unneatly.ngrok-free.dev/api/"; // NGROK URL
-// export const BASE_URL = "http://192.168.100.14:3000/api/"; // Real device IP
-// export const BASE_URL = "http://localhost:3000/api/"; // iOS Simulator
-// export const BASE_URL = "http://10.0.2.2:3000/api/"; // Android Emulator
+// Production / local backend URL
+// export const BASE_URL = "http://54.193.173.26:3000/api/"; // Old production
+// export const BASE_URL = "http://192.168.100.14:3000/api/"; // Old real device IP (port 3000)
+// export const BASE_URL = "http://localhost:3000/api/"; // iOS Simulator (local backend on 3000)
+// Current backend (NGROK):
+export const BASE_URL = "https://allison-avulsed-unneatly.ngrok-free.dev/api/";
 // ================================================================
 
 export const apiHandler = {
@@ -174,6 +172,31 @@ export const apiHandler = {
     } catch (error) {
       console.log("Categories API Error:", error);
       return []; // Return empty array on error
+    }
+  },
+  uploadCategoryIcon: async (categoryId, formData, token) => {
+    try {
+      const res = await axios.post(
+        BASE_URL + `category/${categoryId}/icon`,
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
+      return res.data;
+    } catch (error) {
+      console.log("Upload Category Icon API Error:", error);
+      console.log("Error details:", error.response?.data || error.message);
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to upload category icon",
+      };
     }
   },
   getPostsWithoutLogin: async (reqObj) => {
@@ -534,6 +557,10 @@ export const apiHandler = {
       return response.data;
     } catch (error) {
       console.log("Error is", error);
+      return {
+        success: false,
+        message: error.response?.data?.message || "Failed to post comment",
+      };
     }
   },
   getFavoriteRestaurants: async (token) => {

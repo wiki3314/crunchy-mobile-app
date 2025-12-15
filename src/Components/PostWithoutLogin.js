@@ -187,152 +187,189 @@ export default function PostWithoutLogin() {
   }
 
   const onApplePress = async () => {
-    const appleAuthRequestResponse = await appleAuth.performRequest({
-      requestedOperation: appleAuth.Operation.LOGIN,
-      requestedScopes: [appleAuth.Scope.EMAIL, appleAuth.Scope.FULL_NAME],
-    });
-    const credentialState = await appleAuth.getCredentialStateForUser(
-      appleAuthRequestResponse.user
-    );
-    if (credentialState == 1) {
+    try {
+      setIsLoading(true);
+      const appleAuthRequestResponse = await appleAuth.performRequest({
+        requestedOperation: appleAuth.Operation.LOGIN,
+        requestedScopes: [appleAuth.Scope.EMAIL, appleAuth.Scope.FULL_NAME],
+      });
+
+      const credentialState = await appleAuth.getCredentialStateForUser(
+        appleAuthRequestResponse.user
+      );
+
+      if (credentialState !== appleAuth.State.AUTHORIZED) {
+        console.log("❌ Apple credential state not authorized:", credentialState);
+        setIsLoading(false);
+        return;
+      }
+
       var myHeaders = new Headers();
       myHeaders.append("Content-Type", "application/json");
       let fcmToken = await AsyncStorage.getItem("fcmToken");
+      console.log("Apple Login FCM token:", fcmToken);
+
+      const appleUserId = appleAuthRequestResponse.user;
+      const appleEmail =
+        appleAuthRequestResponse.email ||
+        `${appleUserId}@apple.local`; // fallback to avoid null/duplicate email issues
 
       // Backend expects: provider, social_id, name, email
       var raw = JSON.stringify({
         provider: "apple",
-        social_id: appleAuthRequestResponse.user,
+        social_id: appleUserId,
         name: appleAuthRequestResponse?.fullName?.givenName || "User",
-        email: appleAuthRequestResponse.email || "",
+        email: appleEmail,
       });
+
+      console.log("🍎 Calling Apple socialLogin with:", JSON.parse(raw));
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+
       var requestOptions = {
         method: "POST",
         headers: myHeaders,
         body: raw,
         redirect: "follow",
+        signal: controller.signal,
       };
-      try {
-        await fetch(BASE_URL + "socialLogin", requestOptions)
-          .then((response) => response.json())
-          .then(async (response) => {
-            if (response?.success && response?.token) {
-              const token = response.token;
-              await helperFunctions.storeAccessToken(token);
-              AsyncStorage.setItem("swipeValue", "0");
-              AsyncStorage.setItem("isReviewPosted", "false");
 
-              if (response.user) {
-                dispatch(setUserData(response.user));
-              } else {
-                let userData = await apiHandler.getUserData(token);
-                dispatch(setUserData(userData));
+      await fetch(BASE_URL + "socialLogin", requestOptions)
+        .then((response) => {
+          clearTimeout(timeoutId);
+          console.log("🍎 Apple socialLogin status:", response.status);
+          return response.json();
+        })
+        .then(async (response) => {
+          console.log(
+            "🍎 Apple socialLogin response:",
+            JSON.stringify(response, null, 2)
+          );
+
+          if (!response?.success || !response?.token) {
+            console.log("❌ Apple login failed:", response?.message);
+            setIsLoading(false);
+            return;
+          }
+
+          const token = response.token;
+          await helperFunctions.storeAccessToken(token);
+          AsyncStorage.setItem("swipeValue", "0");
+          AsyncStorage.setItem("isReviewPosted", "false");
+
+          if (response.user) {
+            dispatch(setUserData(response.user));
+          } else {
+            let userData = await apiHandler.getUserData(token);
+            dispatch(setUserData(userData));
+          }
+
+          if (response?.isNewUser) {
+            console.log("New userrrrrrrrr (Apple)");
+            dispatch(setIsNewUser(true));
+          } else {
+            dispatch(setIsNewUser(false));
+          }
+
+          // Load all user data
+          let categories = await apiHandler.getAllCategories(token);
+          let adminAdvertisements =
+            await apiHandler.getAdminPanelAdvertisements(token);
+          let session = await apiHandler.userSessionAPI(token, {});
+          let likedInAppPosts = await apiHandler.getFavoriteRestaurants(token);
+          let googlePosts = await apiHandler.getGoogleLikedPosts(token);
+          let favoriteRestaurants = await apiHandler.getLikedRestaurants(token);
+
+          // Get full user data to access user_settings
+          let userData = response.user || (await apiHandler.getUserData(token));
+
+          // Map favorite restaurants
+          favoriteRestaurants = (favoriteRestaurants || [])
+            .map((item) => {
+              let restaurantImage = null;
+              if (item.google_photo_reference) {
+                restaurantImage = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${item.google_photo_reference}&key=AIzaSyCLb-WobrzT3gvpXDLkNYPWbIpd30bxKLQ`;
+              } else if (item.image) {
+                restaurantImage = item.image;
               }
 
-              if (response?.isNewUser) {
-                console.log("New userrrrrrrrr");
-                dispatch(setIsNewUser(true));
-              } else {
-                dispatch(setIsNewUser(false));
-              }
+              const restaurantId =
+                item.google_place_id || item.restaurant_id || item.id;
 
-              // Load all user data
-              let categories = await apiHandler.getAllCategories(token);
-              let adminAdvertisements =
-                await apiHandler.getAdminPanelAdvertisements(token);
-              let session = await apiHandler.userSessionAPI(token, {});
-              let likedInAppPosts = await apiHandler.getFavoriteRestaurants(
-                token
-              );
-              let googlePosts = await apiHandler.getGoogleLikedPosts(token);
-              let favoriteRestaurants = await apiHandler.getLikedRestaurants(
-                token
-              );
+              return {
+                restaurantName:
+                  item.name || item.restaurant_name || "Unknown Restaurant",
+                restaurantImage: restaurantImage,
+                restaurant_id: restaurantId,
+                google_place_id: item.google_place_id,
+              };
+            })
+            .filter((item) => item.restaurant_id && item.google_place_id);
 
-              // Get full user data to access user_settings
-              let userData =
-                response.user || (await apiHandler.getUserData(token));
+          // ✅ Load user preferences from database
+          const userSettings = userData.user_settings;
+          let hasLoadedCategories = false;
 
-              // Map favorite restaurants
-              favoriteRestaurants = (favoriteRestaurants || [])
-                .map((item) => {
-                  let restaurantImage = null;
-                  if (item.google_photo_reference) {
-                    restaurantImage = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${item.google_photo_reference}&key=AIzaSyCLb-WobrzT3gvpXDLkNYPWbIpd30bxKLQ`;
-                  } else if (item.image) {
-                    restaurantImage = item.image;
-                  }
+          if (userSettings) {
+            console.log(
+              "📊 Apple Login - Loading user preferences:",
+              userSettings
+            );
 
-                  const restaurantId =
-                    item.google_place_id || item.restaurant_id || item.id;
-
-                  return {
-                    restaurantName:
-                      item.name || item.restaurant_name || "Unknown Restaurant",
-                    restaurantImage: restaurantImage,
-                    restaurant_id: restaurantId,
-                    google_place_id: item.google_place_id,
-                  };
-                })
-                .filter((item) => item.restaurant_id && item.google_place_id);
-
-              // ✅ Load user preferences from database
-              const userSettings = userData.user_settings;
-              let hasLoadedCategories = false;
-
-              if (userSettings) {
-                console.log(
-                  "📊 Apple Login - Loading user preferences:",
-                  userSettings
-                );
-
-                if (userSettings.search_radius) {
-                  dispatch(savePostsRadius(userSettings.search_radius));
-                  console.log("✅ Loaded radius:", userSettings.search_radius);
-                }
-
-                if (
-                  userSettings.favorite_categories &&
-                  userSettings.favorite_categories.length > 0
-                ) {
-                  const savedCategories = categories.filter((cat) =>
-                    userSettings.favorite_categories.includes(cat.id)
-                  );
-                  if (savedCategories.length > 0) {
-                    dispatch(updateFoodCategories(savedCategories));
-                    console.log("✅ Loaded categories:", savedCategories);
-                    hasLoadedCategories = true;
-                  }
-                }
-              }
-
-              // ✅ If user has no saved categories, use ALL categories as default
-              if (!hasLoadedCategories && categories && categories.length > 0) {
-                console.log(
-                  "📊 Apple Login - No saved categories, loading ALL categories as default"
-                );
-                dispatch(updateFoodCategories(categories));
-              }
-
-              dispatch(setLikedPosts(likedInAppPosts || []));
-              dispatch(setFavouritePlaces(googlePosts || []));
-              dispatch(setFavoriteRestaurants(favoriteRestaurants || []));
-              dispatch(setCurrentSessionId(session?.id || 0));
-              dispatch(setAdminAdvertisements(adminAdvertisements));
-              dispatch(setFoodCategories(categories));
-
-              // Set token and trigger post loading together
-              dispatch(setAccessToken(token));
-              dispatch(setLoadNewPosts(true));
-              dispatch(showHideForceLoginModal(false));
-              setIsLoading(false);
-            } else {
-              setIsLoading(false);
+            if (userSettings.search_radius) {
+              dispatch(savePostsRadius(userSettings.search_radius));
+              console.log("✅ Loaded radius:", userSettings.search_radius);
             }
-          });
-      } catch (error) {
-        setIsLoading(false);
-      }
+
+            if (
+              userSettings.favorite_categories &&
+              userSettings.favorite_categories.length > 0
+            ) {
+              const savedCategories = categories.filter((cat) =>
+                userSettings.favorite_categories.includes(cat.id)
+              );
+              if (savedCategories.length > 0) {
+                dispatch(updateFoodCategories(savedCategories));
+                console.log("✅ Loaded categories:", savedCategories);
+                hasLoadedCategories = true;
+              }
+            }
+          }
+
+          // ✅ If user has no saved categories, use ALL categories as default
+          if (!hasLoadedCategories && categories && categories.length > 0) {
+            console.log(
+              "📊 Apple Login - No saved categories, loading ALL categories as default"
+            );
+            dispatch(updateFoodCategories(categories));
+          }
+
+          dispatch(setLikedPosts(likedInAppPosts || []));
+          dispatch(setFavouritePlaces(googlePosts || []));
+          dispatch(setFavoriteRestaurants(favoriteRestaurants || []));
+          dispatch(setCurrentSessionId(session?.id || 0));
+          dispatch(setAdminAdvertisements(adminAdvertisements));
+          dispatch(setFoodCategories(categories));
+
+          // Set token and trigger post loading together
+          dispatch(setAccessToken(token));
+          dispatch(setLoadNewPosts(true));
+          dispatch(showHideForceLoginModal(false));
+          setIsLoading(false);
+        })
+        .catch((error) => {
+          clearTimeout(timeoutId);
+          if (error.name === "AbortError") {
+            console.log("❌ Apple socialLogin timeout after 30 seconds");
+          } else {
+            console.log("❌ Apple socialLogin fetch error:", error);
+          }
+          setIsLoading(false);
+        });
+    } catch (error) {
+      console.log("❌ Apple login error:", error);
+      setIsLoading(false);
     }
   };
 
@@ -398,21 +435,22 @@ export default function PostWithoutLogin() {
         string: "id, name, first_name, last_name, birthday, email",
       },
     };
+
     const profileRequest = new GraphRequest(
       "/me",
-      { token, parameters: PROFILE_REQUEST_PARAMS },
+      {
+        accessToken: token,
+        parameters: PROFILE_REQUEST_PARAMS,
+      },
       (error, result) => {
         if (error) {
           console.log("Login Info has an error:", error);
         } else {
-          if (result.isCancelled) {
-            console.log("Login cancelled");
-          }
-          if (result.email === undefined) {
+          if (!result?.email) {
             Alert.alert(
               "Error",
-              "To contiune MyApp plase allow access to your email",
-              "Ok"
+              "To continue Crunchii please allow access to your email",
+              [{ text: "OK" }]
             );
           } else {
             socialLogin(result, "facebook");
@@ -420,6 +458,7 @@ export default function PostWithoutLogin() {
         }
       }
     );
+
     new GraphRequestManager().addRequest(profileRequest).start();
   };
 
@@ -768,6 +807,11 @@ export default function PostWithoutLogin() {
         removeClippedSubviews={true}
         keyExtractor={(item, index) => index.toString()}
         ListEmptyComponent={() => {
+          // Only show "Oops" after loading is finished and there is no data
+          if (isLoading) {
+            return null;
+          }
+
           return (
             <View
               style={{

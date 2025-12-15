@@ -281,14 +281,14 @@ export default function AddPost(props) {
         image: selectedItem.url,
       };
       let response = await apiHandler.removeImage(reqObj, accessToken);
-      
+
       if (!response || !response.success) {
         setIsLoading(false);
-        setErrorMessage(response?.message || 'Failed to remove image');
+        setErrorMessage(response?.message || "Failed to remove image");
         setShowErrorMessage(true);
         return;
       }
-      
+
       let arrUploadedImages = [...uploadedImages];
       let arrUploadedImagesThumbnails = [...uploadedImagesThumbnails];
       arrUploadedImages = arrUploadedImages.filter((item, index) => {
@@ -305,7 +305,7 @@ export default function AddPost(props) {
     } catch (error) {
       console.error("Error removing image:", error);
       setIsLoading(false);
-      setErrorMessage('Failed to remove image');
+      setErrorMessage("Failed to remove image");
       setShowErrorMessage(true);
     }
   }
@@ -493,6 +493,7 @@ export default function AddPost(props) {
 
   const onGalleryPress = () => {
     ImagePicker.launchImageLibrary(options, async (response) => {
+      setShowAddImageModal(false);
       if (response.didCancel) {
         setErrorMessage("You did not select any image");
         setShowErrorMessage(true);
@@ -583,6 +584,7 @@ export default function AddPost(props) {
         durationLimit: 30,
       },
       async (response) => {
+        setShowAddImageModal(false);
         if (response.didCancel) {
           setErrorMessage("You did not select any video");
           setShowErrorMessage(true);
@@ -1051,40 +1053,45 @@ export default function AddPost(props) {
           visible={showAddImageModal}
           animationType="slide"
           transparent={true}
+          onRequestClose={() => setShowAddImageModal(false)}
         >
-          <View style={commonStyles.flexFull}>
-            <View style={styles.imagePickerModalFullContainer}>
-              <View style={styles.imagePickerModalInnerContainer}>
-                <View style={styles.pickerContainer("")}>
-                  <Text
-                    style={commonStyles.textWhite(19, {
-                      color: colors.appPrimary,
-                      fontWeight: "600",
-                      marginLeft: moderateScale(8),
-                    })}
-                  >
-                    Select an option
-                  </Text>
+          <TouchableWithoutFeedback onPress={() => setShowAddImageModal(false)}>
+            <View style={commonStyles.flexFull}>
+              <TouchableWithoutFeedback>
+                <View style={styles.imagePickerModalFullContainer}>
+                  <View style={styles.imagePickerModalInnerContainer}>
+                    <View style={styles.pickerContainer("")}>
+                      <Text
+                        style={commonStyles.textWhite(19, {
+                          color: colors.appPrimary,
+                          fontWeight: "600",
+                          marginLeft: moderateScale(8),
+                        })}
+                      >
+                        Select an option
+                      </Text>
+                    </View>
+                    <SinglePickerIcon
+                      title={"Take a picture"}
+                      iconName={"camera"}
+                    />
+                    <SinglePickerIcon
+                      title={"Record a video"}
+                      iconName={"video-camera"}
+                    />
+                    <SinglePickerIcon
+                      title={"Upload an image"}
+                      iconName={"photo"}
+                    />
+                    <SinglePickerIcon
+                      title={"Upload a video"}
+                      iconName={"file-video-o"}
+                    />
+                  </View>
                 </View>
-                <SinglePickerIcon
-                  title={"Take a picture"}
-                  iconName={"camera"}
-                />
-                <SinglePickerIcon
-                  title={"Record a video"}
-                  iconName={"video-camera"}
-                />
-                <SinglePickerIcon
-                  title={"Upload an image"}
-                  iconName={"photo"}
-                />
-                <SinglePickerIcon
-                  title={"Upload a video"}
-                  iconName={"file-video-o"}
-                />
-              </View>
+              </TouchableWithoutFeedback>
             </View>
-          </View>
+          </TouchableWithoutFeedback>
         </Modal>
         <Modal
           visible={showMockRestaurantPicker}

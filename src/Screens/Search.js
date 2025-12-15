@@ -271,8 +271,8 @@ export default function Search(props) {
         key={index}
         resizeMode="cover"
         source={
-          item.image
-            ? { uri: CATEGORY_IMAGES_BASE_URL + item.image }
+          item.icon || item.image
+            ? { uri: CATEGORY_IMAGES_BASE_URL + (item.icon || item.image) }
             : imagePath.americanFoodImage
         }
         defaultSource={imagePath.americanFoodImage}
