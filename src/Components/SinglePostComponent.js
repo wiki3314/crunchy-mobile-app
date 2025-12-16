@@ -74,10 +74,15 @@ import Video from "react-native-video";
 import axios from "axios";
 import CustomToast from "./CustomToast";
 import ErrorComponent from "./ErrorComponent";
-// import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
+import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
 import InAppReview from "react-native-in-app-review";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import DoubleClick from "./DoubleClick";
+
+// Google AdMob Banner Ad IDs (test IDs from old project)
+const bannerAdId = Platform.OS == 'android' 
+  ? "ca-app-pub-3940256099942544/6300978111" 
+  : 'ca-app-pub-3940256099942544/2934735716';
 import Share from "react-native-share";
 const RNFS = require("react-native-fs");
 
@@ -242,6 +247,7 @@ export default function SinglePostComponent({}) {
               adDescription: randomAdvertisment.description,
               adType: randomAdvertisment.mediaType,
               adMediaSource: randomAdvertisment.mediaSource,
+              isPaused: false, // Video ads will auto-play when in view
             });
           } else {
             // If no ads available, still push the post
@@ -343,6 +349,7 @@ export default function SinglePostComponent({}) {
               adDescription: randomAdvertisment.description,
               adType: randomAdvertisment.mediaType,
               adMediaSource: randomAdvertisment.mediaSource,
+              isPaused: false, // Video ads will auto-play when in view
             });
           } else {
             // If no ads available, still push the post
@@ -453,6 +460,7 @@ export default function SinglePostComponent({}) {
               adDescription: randomAdvertisment.description,
               adType: randomAdvertisment.mediaType,
               adMediaSource: randomAdvertisment.mediaSource,
+              isPaused: false, // Video ads will auto-play when in view
             });
           } else {
             // If no ads available, still push the post
@@ -1610,29 +1618,23 @@ export default function SinglePostComponent({}) {
           width: windowWidth,
           justifyContent: "center",
           alignItems: "center",
+          backgroundColor: currentThemePrimaryColor,
         }}
       >
-        {/* <BannerAd
-                unitId={bannerAdId}
-                size={BannerAdSize.INLINE_ADAPTIVE_BANNER}
-                requestOptions={{
-                    // requestNonPersonalizedAdsOnly: false,
-                    // keywords: ['Restaurant', 'Food', 'Diet', 'Social food']
-                }}
-                onAdFailedToLoad={(error) => {
-                    console.log('Ad loading error is', error)
-                }}
-                onAdLoaded={({ height, width }) => {
-                    console.log('Ad is loaded with height', height, ' and width ', width)
-                }}
-            /> */}
-        <Text
-          style={commonStyles.textWhite(18, {
-            color: currentThemeSecondaryColor,
-          })}
-        >
-          Advertisement Space
-        </Text>
+        <BannerAd
+          unitId={bannerAdId}
+          size={BannerAdSize.INLINE_ADAPTIVE_BANNER}
+          requestOptions={{
+            // requestNonPersonalizedAdsOnly: false,
+            // keywords: ['Restaurant', 'Food', 'Diet', 'Social food']
+          }}
+          onAdFailedToLoad={(error) => {
+            console.log('Ad loading error is', error);
+          }}
+          onAdLoaded={({ height, width }) => {
+            console.log('Ad is loaded with height', height, ' and width ', width);
+          }}
+        />
       </View>
     );
   }
@@ -1688,7 +1690,7 @@ export default function SinglePostComponent({}) {
               zIndex: 9,
             }}
             resizeMode="stretch"
-            paused={item.isPaused || !isFocused}
+            paused={item.isPaused !== undefined ? (item.isPaused || !isFocused) : !isFocused}
             repeat={true}
             ref={(ref) => {
               videoRef.current = ref;
@@ -1855,6 +1857,32 @@ export default function SinglePostComponent({}) {
           if (allPosts && allPosts.length > 0 && allPosts[currentIndex]) {
             setPostDetails(allPosts[currentIndex]);
           }
+
+          // Handle video playback state for all items (posts + ads)
+          let newUp = allPosts.map((item, index) => {
+            if (item && item.isAdvertisement && item.adType === "video") {
+              // For video ads: play current, pause others
+              return {
+                ...item,
+                isPaused: index !== currentIndex,
+              };
+            } else if (item && !item.isAdvertisement) {
+              // For regular posts: existing logic
+              return {
+                ...item,
+                isPaused:
+                  index !== currentIndex
+                    ? true
+                    : item.isPaused !== undefined
+                    ? item.isPaused
+                    : true,
+              };
+            }
+            return item;
+          });
+          dispatch(setAllPosts(newUp));
+
+          // Track ad view
           if (
             allPosts &&
             allPosts[currentIndex] &&

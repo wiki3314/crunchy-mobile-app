@@ -7,11 +7,12 @@ import {
 } from "./mockRestaurantData";
 // ==================== BASE URL CONFIGURATION ====================
 // Production / local backend URL
-// export const BASE_URL = "http://54.193.173.26:3000/api/"; // Old production
+export const BASE_URL = "http://54.193.173.26:3000/api/"; // Old production
 // export const BASE_URL = "http://192.168.100.14:3000/api/"; // Old real device IP (port 3000)
 // export const BASE_URL = "http://localhost:3000/api/"; // iOS Simulator (local backend on 3000)
 // Current backend (NGROK):
-export const BASE_URL = "https://allison-avulsed-unneatly.ngrok-free.dev/api/";
+//export const BASE_URL = "https://allison-avulsed-unneatly.ngrok-free.dev/api/";
+
 // ================================================================
 
 export const apiHandler = {

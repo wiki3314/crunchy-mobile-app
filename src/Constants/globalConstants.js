@@ -20,11 +20,12 @@ export const VIBRATION_PATTERN = [0, 100];
 export const ratingsData = [1, 2, 3, 4, 5];
 
 // Production / local backend URL
-// const BACKEND_BASE_URL = "http://54.193.173.26:3000"; // Old production IP
+const BACKEND_BASE_URL = "http://54.193.173.26:3000"; // Old production IP
 // const BACKEND_BASE_URL = "http://192.168.100.14:3000"; // Old real device IP (port 3000)
 // const BACKEND_BASE_URL = "http://localhost:3000"; // iOS Simulator (local backend on 3000)
 // Current backend (NGROK):
-const BACKEND_BASE_URL = "https://allison-avulsed-unneatly.ngrok-free.dev";
+//const BACKEND_BASE_URL = "https://allison-avulsed-unneatly.ngrok-free.dev";
+//const BACKEND_BASE_URL = "http://54.193.173.26:3000";
 
 export const POSTS_IMAGE_BASE_URL = `${BACKEND_BASE_URL}/storage/`;
 
