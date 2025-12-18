@@ -199,7 +199,10 @@ export default function PostWithoutLogin() {
       );
 
       if (credentialState !== appleAuth.State.AUTHORIZED) {
-        console.log("❌ Apple credential state not authorized:", credentialState);
+        console.log(
+          "❌ Apple credential state not authorized:",
+          credentialState
+        );
         setIsLoading(false);
         return;
       }
@@ -211,8 +214,7 @@ export default function PostWithoutLogin() {
 
       const appleUserId = appleAuthRequestResponse.user;
       const appleEmail =
-        appleAuthRequestResponse.email ||
-        `${appleUserId}@apple.local`; // fallback to avoid null/duplicate email issues
+        appleAuthRequestResponse.email || `${appleUserId}@apple.local`; // fallback to avoid null/duplicate email issues
 
       // Backend expects: provider, social_id, name, email
       var raw = JSON.stringify({
@@ -283,6 +285,11 @@ export default function PostWithoutLogin() {
 
           // Get full user data to access user_settings
           let userData = response.user || (await apiHandler.getUserData(token));
+          // Handle case where getUserData returns null (user not found)
+          if (!userData) {
+            console.log("⚠️ User data not found, using defaults");
+            userData = {}; // Use empty object to prevent errors
+          }
 
           // Map favorite restaurants
           favoriteRestaurants = (favoriteRestaurants || [])
@@ -308,7 +315,7 @@ export default function PostWithoutLogin() {
             .filter((item) => item.restaurant_id && item.google_place_id);
 
           // ✅ Load user preferences from database
-          const userSettings = userData.user_settings;
+          const userSettings = userData?.user_settings;
           let hasLoadedCategories = false;
 
           if (userSettings) {
@@ -406,27 +413,42 @@ export default function PostWithoutLogin() {
   };
 
   const loginWithFacebook = () => {
+    setIsLoading(true);
     LoginManager.logInWithPermissions([
       "public_profile",
       "email",
       "user_friends",
-    ]).then((result) => {
-      console.log("result for the facebook ", result);
-      if (result.isCancelled) {
+    ])
+      .then((result) => {
+        console.log("result for the facebook ", result);
+        if (result.isCancelled) {
+          setIsLoading(false);
+          console.log("is canceleddddd");
+        } else {
+          AccessToken.getCurrentAccessToken()
+            .then((data) => {
+              console.log("data is the fov", data);
+              if (data && data.accessToken) {
+                const accessToken = data.accessToken.toString();
+                getUserInfoFromFacebookToken(accessToken);
+              } else {
+                setIsLoading(false);
+                console.log("No access token received");
+                Alert.alert("Error", "Failed to get Facebook access token");
+              }
+            })
+            .catch((error) => {
+              console.log("Error fetching accessToken:", error);
+              setIsLoading(false);
+              Alert.alert("Error", "Failed to get Facebook access token: " + (error.message || "Unknown error"));
+            });
+        }
+      })
+      .catch((error) => {
+        console.log("Facebook login error:", error);
         setIsLoading(false);
-        console.log("is canceleddddd");
-      } else {
-        AccessToken.getCurrentAccessToken()
-          .then((data) => {
-            console.log("data is the fov", data);
-            const accessToken = data.accessToken.toString();
-            getUserInfoFromFacebookToken(accessToken);
-          })
-          .catch((error) => {
-            console.log("Error fetching accessToken");
-          });
-      }
-    });
+        Alert.alert("Error", "Facebook login failed: " + (error.message || "Unknown error"));
+      });
   };
 
   const getUserInfoFromFacebookToken = (token) => {
@@ -439,14 +461,17 @@ export default function PostWithoutLogin() {
     const profileRequest = new GraphRequest(
       "/me",
       {
-        accessToken: token,
+        token: token, // Use 'token' not 'accessToken' (old project pattern)
         parameters: PROFILE_REQUEST_PARAMS,
       },
       (error, result) => {
         if (error) {
           console.log("Login Info has an error:", error);
+          setIsLoading(false);
+          Alert.alert("Error", "Failed to get Facebook profile: " + (error.message || "Unknown error"));
         } else {
           if (!result?.email) {
+            setIsLoading(false);
             Alert.alert(
               "Error",
               "To continue Crunchii please allow access to your email",
@@ -551,6 +576,11 @@ export default function PostWithoutLogin() {
 
           // Get full user data to access user_settings
           let userData = response.user || (await apiHandler.getUserData(token));
+          // Handle case where getUserData returns null (user not found)
+          if (!userData) {
+            console.log("⚠️ User data not found, using defaults");
+            userData = {}; // Use empty object to prevent errors
+          }
 
           // Backend returns { id, name, google_photo_reference, ... }
           favoriteRestaurants = favoriteRestaurants
@@ -594,7 +624,7 @@ export default function PostWithoutLogin() {
             });
 
           // ✅ Load user preferences from database FIRST (before setting token)
-          const userSettings = userData.user_settings;
+          const userSettings = userData?.user_settings;
           let hasLoadedCategories = false;
 
           if (userSettings) {
@@ -807,7 +837,7 @@ export default function PostWithoutLogin() {
         removeClippedSubviews={true}
         keyExtractor={(item, index) => index.toString()}
         ListEmptyComponent={() => {
-          // Only show "Oops" after loading is finished and there is no data
+          // Don't show empty component while loading
           if (isLoading) {
             return null;
           }
@@ -822,20 +852,7 @@ export default function PostWithoutLogin() {
                 backgroundColor: currentThemePrimaryColor,
               }}
             >
-              <Text
-                style={commonStyles.textWhite(28, {
-                  color: currentThemeSecondaryColor,
-                })}
-              >
-                Oops..!!!
-              </Text>
-              <Text
-                style={commonStyles.textWhite(22, {
-                  color: currentThemeSecondaryColor,
-                })}
-              >
-                No restaurants found
-              </Text>
+              {/* Empty state - only shows when not loading and no posts */}
             </View>
           );
         }}

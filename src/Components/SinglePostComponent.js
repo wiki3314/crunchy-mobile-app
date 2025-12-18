@@ -74,15 +74,16 @@ import Video from "react-native-video";
 import axios from "axios";
 import CustomToast from "./CustomToast";
 import ErrorComponent from "./ErrorComponent";
-import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
+import { BannerAd, BannerAdSize } from "react-native-google-mobile-ads";
 import InAppReview from "react-native-in-app-review";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import DoubleClick from "./DoubleClick";
 
 // Google AdMob Banner Ad IDs (test IDs from old project)
-const bannerAdId = Platform.OS == 'android' 
-  ? "ca-app-pub-3940256099942544/6300978111" 
-  : 'ca-app-pub-3940256099942544/2934735716';
+const bannerAdId =
+  Platform.OS == "android"
+    ? "ca-app-pub-3940256099942544/6300978111"
+    : "ca-app-pub-3940256099942544/2934735716";
 import Share from "react-native-share";
 const RNFS = require("react-native-fs");
 
@@ -936,11 +937,11 @@ export default function SinglePostComponent({}) {
 
   const onShare = async (item) => {
     const path = `${RNFS.DocumentDirectoryPath}/${item.restaurant_id}.jpg`;
-    let sharedLink = '';
+    let sharedLink = "";
 
     if (item.isGoogle) {
       // Dynamic link for Google Place post
-      const placeId = item.restaurant_id || item.place_id || '';
+      const placeId = item.restaurant_id || item.place_id || "";
       sharedLink = `googlePost/?${placeId}`;
     } else {
       // Dynamic link for in-app (Crunchy) post
@@ -949,7 +950,7 @@ export default function SinglePostComponent({}) {
 
     try {
       setIsLoading(true);
-      setLoaderTitle('Generating share link');
+      setLoaderTitle("Generating share link");
 
       // Fallback link in case Dynamic Links API is not available
       let link = `https://crunchyapp.page.link/${sharedLink}`;
@@ -960,20 +961,20 @@ export default function SinglePostComponent({}) {
           {
             link: `http://invertase.io/` + sharedLink,
             android: {
-              packageName: 'com.crunchy',
+              packageName: "com.crunchy",
             },
             ios: {
-              bundleId: 'com.crunchy',
-              appStoreId: 'F8CM492S3P',
+              bundleId: "com.crunchy",
+              appStoreId: "F8CM492S3P",
             },
-            domainUriPrefix: 'https://crunchyapp.page.link',
+            domainUriPrefix: "https://crunchyapp.page.link",
           },
-          firebase.dynamicLinks.ShortLinkType.UNGUESSABLE,
+          firebase.dynamicLinks.ShortLinkType.UNGUESSABLE
         );
       } catch (e) {
         console.warn(
-          'Dynamic Links not available, using fallback URL instead:',
-          e?.message || e,
+          "Dynamic Links not available, using fallback URL instead:",
+          e?.message || e
         );
         // Continue with fallback link
       }
@@ -990,11 +991,11 @@ export default function SinglePostComponent({}) {
             fromUrl: item.restaurantImage,
             toFile: filePath,
           }).promise;
-          base64Image = await RNFS.readFile(filePath, 'base64');
+          base64Image = await RNFS.readFile(filePath, "base64");
         } catch (e) {
           console.warn(
-            'Failed to load Google image for share, will share text only:',
-            e?.message || e,
+            "Failed to load Google image for share, will share text only:",
+            e?.message || e
           );
           // Keep base64Image undefined so we still share the link text
           base64Image = null;
@@ -1002,7 +1003,7 @@ export default function SinglePostComponent({}) {
       }
 
       const shareOptions = {
-        title: 'Found this on Crunchii',
+        title: "Found this on Crunchii",
         message: `Hey! I found this restaurant on Crunchii, check it out.\n${link}`,
         ...(base64Image && {
           url: `data:image/jpeg;base64,${base64Image}`,
@@ -1011,7 +1012,7 @@ export default function SinglePostComponent({}) {
 
       await Share.open(shareOptions);
     } catch (error) {
-      console.error('Share Error:', error);
+      console.error("Share Error:", error);
     } finally {
       setIsLoading(false);
     }
@@ -1624,15 +1625,22 @@ export default function SinglePostComponent({}) {
         <BannerAd
           unitId={bannerAdId}
           size={BannerAdSize.INLINE_ADAPTIVE_BANNER}
-          requestOptions={{
-            // requestNonPersonalizedAdsOnly: false,
-            // keywords: ['Restaurant', 'Food', 'Diet', 'Social food']
-          }}
+          requestOptions={
+            {
+              // requestNonPersonalizedAdsOnly: false,
+              // keywords: ['Restaurant', 'Food', 'Diet', 'Social food']
+            }
+          }
           onAdFailedToLoad={(error) => {
-            console.log('Ad loading error is', error);
+            console.log("Ad loading error is", error);
           }}
           onAdLoaded={({ height, width }) => {
-            console.log('Ad is loaded with height', height, ' and width ', width);
+            console.log(
+              "Ad is loaded with height",
+              height,
+              " and width ",
+              width
+            );
           }}
         />
       </View>
@@ -1690,7 +1698,11 @@ export default function SinglePostComponent({}) {
               zIndex: 9,
             }}
             resizeMode="stretch"
-            paused={item.isPaused !== undefined ? (item.isPaused || !isFocused) : !isFocused}
+            paused={
+              item.isPaused !== undefined
+                ? item.isPaused || !isFocused
+                : !isFocused
+            }
             repeat={true}
             ref={(ref) => {
               videoRef.current = ref;
@@ -1796,6 +1808,11 @@ export default function SinglePostComponent({}) {
           index,
         })}
         ListEmptyComponent={() => {
+          // Don't show empty component while loading
+          if (isLoading) {
+            return null;
+          }
+
           return (
             <View
               style={{
@@ -1806,12 +1823,7 @@ export default function SinglePostComponent({}) {
                 backgroundColor: currentThemePrimaryColor,
               }}
             >
-              {/* <Text style={commonStyles.textWhite(28, { color: currentThemeSecondaryColor })}>
-                            Oops..!!!
-                        </Text>
-                        <Text style={commonStyles.textWhite(22, { color: currentThemeSecondaryColor })}>
-                            No restaurants found
-                        </Text> */}
+              {/* Empty state - only shows when not loading and no posts */}
             </View>
           );
         }}

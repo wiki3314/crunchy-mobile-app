@@ -749,6 +749,11 @@ export default function Search(props) {
             renderItem={renderUser}
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={() => {
+              // Don't show empty component while searching
+              if (isSearchingForUsers) {
+                return null;
+              }
+
               return (
                 searchedName.trim().length > 0 && (
                   <View
@@ -760,21 +765,7 @@ export default function Search(props) {
                       alignItems: "center",
                     }}
                   >
-                    <Text
-                      style={commonStyles.textWhite(28, {
-                        color: currentThemeSecondaryColor,
-                        fontWeight: "700",
-                      })}
-                    >
-                      Oops..!!!
-                    </Text>
-                    <Text
-                      style={commonStyles.textWhite(22, {
-                        color: currentThemeSecondaryColor,
-                      })}
-                    >
-                      No Crunch partners go by this name
-                    </Text>
+                    {/* Empty state - only shows when not searching and no users found */}
                   </View>
                 )
               );

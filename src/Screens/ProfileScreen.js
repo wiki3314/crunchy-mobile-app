@@ -745,7 +745,7 @@ export default function ProfileScreen(props) {
                 color: currentThemeSecondaryColor,
               })}
             >
-              {item.follows.full_name}
+              {item.follows?.full_name || 'Unknown User'}
             </Text>
           </View>
         </View>
@@ -791,7 +791,7 @@ export default function ProfileScreen(props) {
                 color: currentThemeSecondaryColor,
               })}
             >
-              {item.following.full_name}
+              {item.following?.full_name || 'Unknown User'}
             </Text>
           </View>
         </View>
@@ -1001,10 +1001,10 @@ export default function ProfileScreen(props) {
     setIsLoading(true);
     setLoaderTitle("Updating bio");
     let reqObj = {
-      full_name: userDetails.full_name,
-      email: userDetails.email,
-      password: userDetails.password,
-      password_confirmation: userDetails.password,
+      full_name: userDetails?.full_name || '',
+      email: userDetails?.email || '',
+      password: userDetails?.password || '',
+      password_confirmation: userDetails?.password || '',
       bio: userBio,
     };
     let response = await apiHandler.updateUserProfile(reqObj, token);
@@ -1428,8 +1428,8 @@ export default function ProfileScreen(props) {
                 })}
               >
                 {showFollowers
-                  ? `${userDetails.full_name} followers`
-                  : `${userDetails.full_name} follows`}
+                  ? `${userDetails?.full_name || 'User'} followers`
+                  : `${userDetails?.full_name || 'User'} follows`}
               </Text>
               <View style={commonStyles.flexFull}>
                 {showFollowers ? (

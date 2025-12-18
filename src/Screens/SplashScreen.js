@@ -110,6 +110,28 @@ export default function SplashScreen(props) {
 
         let userData = await apiHandler.getUserData(token);
         console.log("A");
+        // Handle case where getUserData returns null (user not found)
+        if (!userData) {
+          console.log("⚠️ User data not found - invalid token, clearing and navigating to login");
+          setIsLoading(false);
+          // Clear invalid token
+          await helperFunctions.clearAccessToken();
+          // Navigate to landing screen
+          setTimeout(() => {
+            try {
+              navigation.dispatch(
+                CommonActions.reset({
+                  index: 0,
+                  routes: [{ name: navigationStrings.LandingScreen }],
+                })
+              );
+            } catch (navError) {
+              console.log("Navigation error:", navError);
+              navigation.navigate(navigationStrings.LandingScreen);
+            }
+          }, 100);
+          return; // Exit early
+        }
         let userSavedAppSettings = userData?.app_settings;
         let categories = await apiHandler.getAllCategories(token);
         console.log("B");
@@ -182,7 +204,7 @@ export default function SplashScreen(props) {
         dispatch(setAccessToken(token));
 
         // ✅ Load user preferences from database (if they exist)
-        const userSettings = userData.user_settings;
+        const userSettings = userData?.user_settings;
         if (userSettings) {
           console.log(
             "📊 Loading user preferences from database:",

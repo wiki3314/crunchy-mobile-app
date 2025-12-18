@@ -132,14 +132,19 @@ export const apiHandler = {
         },
       });
       console.log("Profile API Response:", res.data);
-      return res.data.user;
+      // Check if response indicates failure
+      if (res.data && res.data.success === false) {
+        console.log("⚠️ Profile API returned error:", res.data.message);
+        return null; // Return null instead of undefined
+      }
+      return res.data.user || null;
     } catch (error) {
       console.log("Profile API Error:", error);
       console.log(
         "Profile API Error details:",
         error.response?.data || error.message
       );
-      throw error; // Re-throw to be caught by caller
+      return null; // Return null instead of throwing
     }
   },
   updateUserProfile: async (reqObj, token) => {

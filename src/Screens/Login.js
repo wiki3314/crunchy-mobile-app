@@ -219,6 +219,10 @@ export default function Login(props) {
             }
 
             let userData = await apiHandler.getUserData(token);
+            // Handle case where getUserData returns null (user not found)
+            if (!userData) {
+              throw new Error("User profile not found");
+            }
             let userSavedAppSettings = userData.app_settings || {};
             // Default to light mode (white background) for new users
             let isDarkMode = userSavedAppSettings.dark_mode === "true";
@@ -300,7 +304,7 @@ export default function Login(props) {
             console.log("🍽️ Mapped favorite restaurants:", favoriteRestaurants);
 
             // ✅ Load user preferences from database FIRST (before setting token)
-            const userSettings = userData.user_settings;
+            const userSettings = userData?.user_settings;
             let hasLoadedCategories = false;
 
             if (userSettings) {
