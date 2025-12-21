@@ -54,6 +54,7 @@ import {
   setSearchingForQuickBites,
   setUserData,
   setFavoriteRestaurants,
+  setFavouritePlaces,
   updateFavoriteRestaurants,
   updateFavouritePlaces,
   updateLikedPosts,
@@ -504,12 +505,58 @@ export default function SinglePostComponent({}) {
     });
   };
 
-  const onCommentPress = () => {
+  const onCommentPress = async () => {
     if (!accessToken || !userDetails) {
       setErrorMessage("Please login to comment");
       setShowErrorMessage(true);
       return;
     }
+    
+    // Fetch fresh post data to get latest comments from database
+    if (postDetails && postDetails.id && !postDetails.isGoogle) {
+      try {
+        setIsLoading(true);
+        setLoaderTitle("Loading comments...");
+        const response = await apiHandler.getPostById(postDetails.id);
+        if (response && response.success && response.post) {
+          // Transform comments to match frontend format
+          const formattedComments = (response.post.comments || []).map((comment) => ({
+            ...comment,
+            user: {
+              ...comment.user,
+              image: comment.user?.profile_picture || comment.user?.image,
+            },
+          }));
+          
+          // Update postDetails with fresh data including latest comments
+          const updatedPost = {
+            ...postDetails,
+            comment: formattedComments,
+            like: response.post.likes || [],
+          };
+          setPostDetails(updatedPost);
+          
+          // Also update Redux state to keep it in sync
+          const updatedPosts = allPosts.map((item) => {
+            if (item.id === postDetails.id && !item.isGoogle) {
+              return {
+                ...item,
+                comment: formattedComments,
+                like: response.post.likes || [],
+              };
+            }
+            return item;
+          });
+          dispatch(setAllPosts(updatedPosts));
+        }
+        setIsLoading(false);
+      } catch (error) {
+        console.error("Error fetching fresh post data:", error);
+        setIsLoading(false);
+        // Still open modal even if fetch fails
+      }
+    }
+    
     setShowCommentModal(true);
   };
 
@@ -604,6 +651,8 @@ export default function SinglePostComponent({}) {
 
     // Update Redux with fresh data
     dispatch(setFavoriteRestaurants(mappedFavorites));
+    // Also update likedGooglePlaces to keep UI in sync
+    dispatch(setFavouritePlaces(mappedFavorites));
     console.log(
       "✅ Redux updated with fresh favorites:",
       mappedFavorites.length
@@ -676,9 +725,13 @@ export default function SinglePostComponent({}) {
       }
 
       // Handle restaurant favorite - use existing post data instead of fetching
-      if (post.restaurant_id && !post.restaurant_id.startsWith("MOCK_")) {
-        // Real restaurant - use data from the post
-        try {
+      // This is optional - if it fails, the like operation should still succeed
+      try {
+        // Convert restaurant_id to string if it exists, or set to null if undefined/null
+        const restaurantId = post.restaurant_id ? String(post.restaurant_id) : null;
+        
+        if (restaurantId && !restaurantId.startsWith("MOCK_")) {
+          // Real restaurant - use data from the post
           // Build restaurant object from post data
           let restaurantName =
             post.restaurant && typeof post.restaurant === "object"
@@ -693,7 +746,7 @@ export default function SinglePostComponent({}) {
 
           // Send proper data to backend for in-app posts
           let requestObject = {
-            restaurant_id: post.restaurant_id,
+            restaurant_id: restaurantId,
             name: restaurantName, // Backend expects 'name', not 'restaurant_name'
             restaurant_name: restaurantName,
             // If this is from Google Places, include that data
@@ -715,7 +768,7 @@ export default function SinglePostComponent({}) {
           };
 
           let objRestaurant = {
-            restaurant_id: post.restaurant_id,
+            restaurant_id: restaurantId,
             restaurantName: restaurantName,
             restaurantImage: restaurantImage,
             google_place_id: post.google_place_id || null,
@@ -726,28 +779,36 @@ export default function SinglePostComponent({}) {
           dispatch(updateFavoriteRestaurants(objRestaurant));
           await apiHandler.likeRestaurant(requestObject, accessToken);
           console.log("✅ Restaurant favorited successfully");
-        } catch (restaurantError) {
-          console.log(
-            "Restaurant favorite error (non-critical):",
-            restaurantError.message
-          );
+        } else if (restaurantId && restaurantId.startsWith("MOCK_")) {
+          // Mock restaurant ID - use restaurant data from post
+          console.log("Using mock restaurant data for like");
+          let objRestaurant = {
+            restaurant_id: restaurantId,
+            restaurantName:
+              post.restaurant && typeof post.restaurant === "object"
+                ? post.restaurant.name
+                : post.restaurant || "Unknown",
+            restaurantImage: "",
+          };
+          dispatch(updateFavoriteRestaurants(objRestaurant));
         }
-      } else if (post.restaurant_id && post.restaurant_id.startsWith("MOCK_")) {
-        // Mock restaurant ID - use restaurant data from post
-        console.log("Using mock restaurant data for like");
-        let objRestaurant = {
-          restaurant_id: post.restaurant_id,
-          restaurantName:
-            post.restaurant && typeof post.restaurant === "object"
-              ? post.restaurant.name
-              : post.restaurant || "Unknown",
-          restaurantImage: "",
-        };
-        dispatch(updateFavoriteRestaurants(objRestaurant));
+      } catch (restaurantError) {
+        // Restaurant favorite is optional - don't break the like operation
+        console.log(
+          "Restaurant favorite error (non-critical):",
+          restaurantError.message
+        );
       }
 
-      dispatch(updateLikedPosts(post));
+      // Update likedPosts - ensure we pass the post with correct id structure
+      // The post object must have an 'id' field that matches what's in the render function
+      const postToUpdate = {
+        id: post.id,
+        ...post
+      };
+      dispatch(updateLikedPosts(postToUpdate));
       console.log("✅ Like operation completed successfully");
+      console.log("✅ Updated likedPosts with post id:", post.id, "post object:", postToUpdate);
     } catch (error) {
       console.error("❌ Error in like/unlike operation:", error);
       console.error("Error details:", error.response?.data || error.message);
@@ -1327,9 +1388,39 @@ export default function SinglePostComponent({}) {
 
       try {
         const response = await apiHandler.commentOnPost(reqObj, accessToken);
-        // If API fails, we don't show error (optimistic update pattern)
-        // The comment is already shown in UI
-        if (!response || !response.success) {
+        // If API succeeds, fetch fresh post data to get the actual comment from DB
+        if (response && response.success) {
+          // Fetch fresh post data to ensure we have the latest comments from DB
+          const freshPostResponse = await apiHandler.getPostById(postDetails.id);
+          if (freshPostResponse && freshPostResponse.success && freshPostResponse.post) {
+            const formattedComments = (freshPostResponse.post.comments || []).map((comment) => ({
+              ...comment,
+              user: {
+                ...comment.user,
+                image: comment.user?.profile_picture || comment.user?.image,
+              },
+            }));
+            
+            // Update postDetails with fresh data
+            const updatedPost = {
+              ...postDetails,
+              comment: formattedComments,
+            };
+            setPostDetails(updatedPost);
+            
+            // Update Redux state
+            const updatedPosts = allPosts.map((item) => {
+              if (item.id === postDetails.id && !item.isGoogle) {
+                return {
+                  ...item,
+                  comment: formattedComments,
+                };
+              }
+              return item;
+            });
+            dispatch(setAllPosts(updatedPosts));
+          }
+        } else {
           console.log(
             "Comment API failed but UI already updated:",
             response?.message
@@ -1354,12 +1445,14 @@ export default function SinglePostComponent({}) {
   };
 
   const renderInAppPost = (item, index) => {
+    // Check if post is liked - ensure proper comparison
     const isLiked =
       likedPosts &&
       likedPosts.length > 0 &&
-      likedPosts.findIndex((innerItem, innerIndex) => {
-        return item.id == innerItem.id;
-      }) != -1;
+      likedPosts.some((likedPost) => {
+        // Use loose equality to handle string/number mismatch
+        return item.id == likedPost.id || String(item.id) === String(likedPost.id);
+      });
     return (
       <View
         style={{

@@ -53,6 +53,12 @@ export default function Notifications(props) {
     getInitialData();
   }, []);
 
+  useEffect(() => {
+    if (isFocused) {
+      getInitialData();
+    }
+  }, [isFocused]);
+
   async function getInitialData() {
     setIsLoading(true);
     try {
@@ -78,16 +84,21 @@ export default function Notifications(props) {
   }
 
   function onSingleNotificationPress(item) {
-    console.log("Item is", item.user);
-    item.user.id !== 144 &&
-      (item.user.id == userData.id
+    // Use actor_user if available (person who performed the action), otherwise use user
+    const notificationUser = item.actor_user || item.user;
+    console.log("Item is", notificationUser);
+    notificationUser &&
+      notificationUser.id !== 144 &&
+      (notificationUser.id == userData.id
         ? navigation.navigate(navigationStrings.ProfileScreen)
         : navigation.navigate(navigationStrings.ShowUser, {
-            userID: item.user.id,
+            userID: notificationUser.id,
           }));
   }
 
   function renderNotifications({ item, index }) {
+    // Use actor_user if available (person who performed the action), otherwise use user
+    const notificationUser = item.actor_user || item.user;
     return (
       <TouchableOpacity
         key={index}
@@ -98,7 +109,13 @@ export default function Notifications(props) {
       >
         <Image
           source={
-            item.user.image ? { uri: item.user.image } : imagePath.appLogo
+            notificationUser && notificationUser.image
+              ? {
+                  uri: notificationUser.image.startsWith("http")
+                    ? notificationUser.image
+                    : USER_PROFILE_BASE_URL + notificationUser.image,
+                }
+              : imagePath.appLogo
           }
           style={styles.notificationUserImage}
         />

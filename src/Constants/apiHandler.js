@@ -149,21 +149,73 @@ export const apiHandler = {
   },
   updateUserProfile: async (reqObj, token) => {
     try {
+      console.log("🔄 UPDATE PROFILE API - Starting request...");
+      console.log("📍 API Endpoint:", BASE_URL + "update_profile");
+      console.log("🔑 Token:", token ? "Present" : "Missing");
+      console.log(
+        "📤 Request payload type:",
+        reqObj instanceof FormData ? "FormData" : typeof reqObj
+      );
+
+      // For FormData in React Native, explicitly set Content-Type (like AddPost.js does)
+      const headers = {
+        Authorization: `Bearer ${token}`,
+      };
+
+      if (reqObj instanceof FormData) {
+        headers["Content-Type"] = "multipart/form-data";
+      } else {
+        headers["Content-Type"] = "application/json";
+      }
+
       let res = await axios.post(BASE_URL + "update_profile", reqObj, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: headers,
+        timeout: 30000, // 30 second timeout for file uploads
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
       });
+
+      console.log("✅ UPDATE PROFILE API - Success:", res.data);
       return res.data;
     } catch (error) {
-      console.error("Update User Profile API Error:", error);
-      console.error("Error details:", error.response?.data || error.message);
+      console.error("❌ UPDATE PROFILE API ERROR - Full error:", error);
+      console.error("❌ Error message:", error.message);
+      console.error("❌ Error code:", error.code);
+      console.error("❌ Response data:", error.response?.data);
+      console.error("❌ Response status:", error.response?.status);
+      console.error("❌ API URL:", BASE_URL + "update_profile");
+
+      // Specific error messages based on error type
+      let errorMessage = "Network error - please check backend is running";
+
+      if (error.code === "ECONNABORTED") {
+        errorMessage = "Request timeout - Backend is not responding";
+      } else if (error.code === "ECONNREFUSED") {
+        errorMessage =
+          "Connection refused - Backend is not running on " + BASE_URL;
+      } else if (
+        error.code === "ENETUNREACH" ||
+        error.code === "EHOSTUNREACH"
+      ) {
+        errorMessage =
+          "Network unreachable - Check your WiFi/network settings and BASE_URL";
+      } else if (error.code === "ERR_NETWORK") {
+        errorMessage =
+          "Network Error - Cannot reach backend server. Please check:\n" +
+          "1. Backend server is running on " +
+          BASE_URL +
+          "\n" +
+          "2. Network connectivity\n" +
+          "3. Try restarting backend server";
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
       return {
         success: false,
-        message:
-          error.response?.data?.message ||
-          error.message ||
-          "Failed to update profile",
+        message: errorMessage,
       };
     }
   },

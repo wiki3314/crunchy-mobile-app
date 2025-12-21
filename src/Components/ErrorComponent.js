@@ -31,7 +31,7 @@ const styles = StyleSheet.create({
         backgroundColor: `${colors.black}77`
     },
     iconStyle: {
-        fontSize: 250,
+        fontSize: moderateScale(50),
         color: '#ff0000'
     }
 })

@@ -31,7 +31,7 @@ export const POSTS_IMAGE_BASE_URL = `${BACKEND_BASE_URL}/storage/`;
 
 export const CATEGORY_IMAGES_BASE_URL = `${BACKEND_BASE_URL}/storage/category/`;
 
-export const USER_PROFILE_BASE_URL = `${BACKEND_BASE_URL}/storage/uploads/`;
+export const USER_PROFILE_BASE_URL = `${BACKEND_BASE_URL}/storage/user/`;
 
 export const ADVERTISEMENTS_BASE_URL = `${BACKEND_BASE_URL}/storage/video/`;
 

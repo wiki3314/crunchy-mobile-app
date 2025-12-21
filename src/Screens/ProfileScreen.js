@@ -1008,6 +1008,16 @@ export default function ProfileScreen(props) {
       bio: userBio,
     };
     let response = await apiHandler.updateUserProfile(reqObj, token);
+    
+    // Check if response is successful
+    if (!response || !response.success || !response.user) {
+      setIsLoading(false);
+      setEditBio(false);
+      setCustomToastMessage(response?.message || "Failed to update bio");
+      setShowCustomToast(true);
+      return;
+    }
+    
     response = response.user;
     dispatch(setUserData(response));
     setIsLoading(false);

@@ -16,6 +16,7 @@ import { name as appName } from "./app.json";
 
 import PushNotificationIOS from "@react-native-community/push-notification-ios";
 import PushNotification from "react-native-push-notification";
+import { handleNotificationClick } from "./src/Constants/notificationNavigation";
 
 // Must be outside of any component LifeCycle (such as `componentDidMount`).
 PushNotification.configure({
@@ -26,9 +27,21 @@ PushNotification.configure({
 
   // (required) Called when a remote is received or opened, or local notification is opened
   onNotification: function (notification) {
-    console.log("NOTIFICATION:", notification);
+    console.log("📱 PushNotification onNotification:", notification);
 
-    // process the notification
+    // Handle notification click (Android - when local notification is clicked)
+    if (notification.userInteraction || (notification.data && Object.keys(notification.data).length > 0)) {
+      const notificationData = notification.data || notification.userInfo || {};
+      console.log("📱 Android notification clicked with data:", notificationData);
+      
+      // Trigger navigation handler
+      if (notificationData && Object.keys(notificationData).length > 0) {
+        // Small delay to ensure navigation is ready
+        setTimeout(() => {
+          handleNotificationClick(notificationData);
+        }, 500);
+      }
+    }
 
     // (required) Called when a remote is received or opened, or local notification is opened
     notification.finish(PushNotificationIOS.FetchResult.NoData);

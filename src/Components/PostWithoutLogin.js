@@ -70,20 +70,32 @@ export default function PostWithoutLogin() {
     (state) => state.currentThemeSecondaryColor
   );
 
-  const images = [
-    {
-      id: 0,
-      imageSource: imagePath.gmailIcon,
-    },
-    {
-      id: 1,
-      imageSource: imagePath.facebookIcon,
-    },
-    {
-      id: 2,
-      imageSource: imagePath.appleIcon,
-    },
-  ];
+  const images =
+    Platform.OS == "ios"
+      ? [
+          {
+            id: 0,
+            imageSource: imagePath.gmailIcon,
+          },
+          {
+            id: 1,
+            imageSource: imagePath.facebookIcon,
+          },
+          {
+            id: 2,
+            imageSource: imagePath.appleIcon,
+          },
+        ]
+      : [
+          {
+            id: 0,
+            imageSource: imagePath.gmailIcon,
+          },
+          {
+            id: 1,
+            imageSource: imagePath.facebookIcon,
+          },
+        ];
 
   const allPosts = useSelector((state) => state.postsWithoutLogin);
   const userLocation = useSelector((state) => state.userLocation);
@@ -440,14 +452,21 @@ export default function PostWithoutLogin() {
             .catch((error) => {
               console.log("Error fetching accessToken:", error);
               setIsLoading(false);
-              Alert.alert("Error", "Failed to get Facebook access token: " + (error.message || "Unknown error"));
+              Alert.alert(
+                "Error",
+                "Failed to get Facebook access token: " +
+                  (error.message || "Unknown error")
+              );
             });
         }
       })
       .catch((error) => {
         console.log("Facebook login error:", error);
         setIsLoading(false);
-        Alert.alert("Error", "Facebook login failed: " + (error.message || "Unknown error"));
+        Alert.alert(
+          "Error",
+          "Facebook login failed: " + (error.message || "Unknown error")
+        );
       });
   };
 
@@ -468,7 +487,11 @@ export default function PostWithoutLogin() {
         if (error) {
           console.log("Login Info has an error:", error);
           setIsLoading(false);
-          Alert.alert("Error", "Failed to get Facebook profile: " + (error.message || "Unknown error"));
+          Alert.alert(
+            "Error",
+            "Failed to get Facebook profile: " +
+              (error.message || "Unknown error")
+          );
         } else {
           if (!result?.email) {
             setIsLoading(false);
@@ -495,12 +518,14 @@ export default function PostWithoutLogin() {
     var myHeaders = new Headers();
     myHeaders.append("Content-Type", "application/json");
 
-    // Backend expects: provider, social_id, name, email
+    // Backend expects: provider, social_id, name, email, fcm_token/device_token
     var raw = JSON.stringify({
       provider: type, // 'google', 'facebook', 'apple'
       social_id: result.id, // Social provider's user ID
       name: result.name, // User's full name
       email: result.email, // User's email
+      fcm_token: fcmToken, // FCM token for push notifications
+      device_token: fcmToken, // Device token (backend might expect either)
     });
     console.log("Calling socialLogin API with:", JSON.parse(raw));
     console.log("API URL:", BASE_URL + "socialLogin");
