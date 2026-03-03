@@ -15,6 +15,15 @@ export const BASE_URL = "http://54.193.173.26:3000/api/"; // Old production
 
 // ================================================================
 
+// Token validation helper
+const validateToken = (token) => {
+  if (!token || token === "" || token === null || token === undefined) {
+    console.warn("⚠️ Token validation failed: Token is missing or invalid");
+    return false;
+  }
+  return true;
+};
+
 export const apiHandler = {
   createFormData: (reqObj) => {
     let formData = new FormData();
@@ -126,25 +135,43 @@ export const apiHandler = {
   },
   getUserData: async (token) => {
     try {
+      if (!validateToken(token)) {
+        console.error("❌ getUserData: Token validation failed");
+        return null;
+      }
       let res = await axios.get(BASE_URL + "profile", {
         headers: {
           Authorization: `Bearer ${token}`,
         },
+        timeout: 10000,
       });
       console.log("Profile API Response:", res.data);
-      // Check if response indicates failure
       if (res.data && res.data.success === false) {
         console.log("⚠️ Profile API returned error:", res.data.message);
-        return null; // Return null instead of undefined
+        return null;
       }
       return res.data.user || null;
     } catch (error) {
-      console.log("Profile API Error:", error);
-      console.log(
-        "Profile API Error details:",
-        error.response?.data || error.message
-      );
-      return null; // Return null instead of throwing
+      console.error("❌ Profile API Error:", error.message);
+      if (error.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        console.error("❌ Profile API Error status:", error.response.status);
+        console.error("❌ Profile API Error data:", error.response.data);
+        
+        // Throw a specific error object so caller can differentiate
+        const customError = new Error(error.response.data?.message || error.message);
+        customError.status = error.response.status;
+        throw customError;
+      } else if (error.request) {
+        // The request was made but no response was received
+        console.error("❌ Profile API No response received (Network Error)");
+        const networkError = new Error("Network Error");
+        networkError.isNetworkError = true;
+        throw networkError;
+      } else {
+        throw error;
+      }
     }
   },
   updateUserProfile: async (reqObj, token) => {
@@ -221,10 +248,14 @@ export const apiHandler = {
   },
   getAllCategories: async (token) => {
     try {
+      // Token is optional - categories can be fetched without login
+      const headers = token
+        ? {
+            Authorization: `Bearer ${token}`,
+          }
+        : {};
       let res = await axios.get(BASE_URL + "category-list", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers,
       });
       return res.data.Category || [];
     } catch (error) {
@@ -257,35 +288,60 @@ export const apiHandler = {
       };
     }
   },
-  getPostsWithoutLogin: async (reqObj) => {
+  getPostsWithoutLogin: async (reqObj, radius, pageToken = null) => {
     try {
-      let res = await axios.get(
-        `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${reqObj.latitude}%2C${reqObj.longitude}&radius=40000&type=restaurant&key=${GOOGLE_API_KEY}`
-      );
-      let placesData = res?.data?.results?.map((item, index) => {
-        if (item.photos && item.photos.length > 0) {
-          return {
-            restaurantName: item.name,
-            restaurantRating: item.rating,
-            restaurantPrice: item.price_level,
-            restaurantImage:
-              item.photos &&
-              item.photos.length > 0 &&
-              item.photos[0].photo_reference,
-            restaurantTiming: item.opening_hours,
-            restaurant_id: item.place_id,
-            isGoogle: true,
-          };
-        }
-      });
+      if (pageToken) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+      const url = pageToken
+        ? `https://maps.googleapis.com/maps/api/place/nearbysearch/json?pagetoken=${pageToken}&key=${GOOGLE_API_KEY}`
+        : `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${
+            reqObj.latitude
+          }%2C${reqObj.longitude}&radius=${
+            (radius || 20) * 1609
+          }&type=restaurant&key=${GOOGLE_API_KEY}`;
+      let res = await axios.get(url);
+      let placesData = res?.data?.results
+        ?.filter((item) => {
+          // Exclude hotels and shopping centers - only food-related places
+          const types = item.types || [];
+          const isHotel = types.includes("lodging");
+          const isShoppingMall = types.includes("shopping_mall");
+          return !isHotel && !isShoppingMall;
+        })
+        ?.map((item, index) => {
+          if (item.photos && item.photos.length > 0) {
+            return {
+              restaurantName: item.name,
+              restaurantRating: item.rating,
+              restaurantPrice: item.price_level,
+              restaurantImages:
+                item.photos && item.photos.length > 0
+                  ? item.photos.map((p) => p.photo_reference)
+                  : [],
+              restaurantImage:
+                item.photos &&
+                item.photos.length > 0 &&
+                item.photos[0].photo_reference,
+              restaurantTiming: item.opening_hours,
+              restaurant_id: item.place_id,
+              isGoogle: true,
+            };
+          }
+          return null; // Explicitly return null for items without photos
+        })
+        .filter(Boolean); // Remove null/undefined items
       placesData = placesData.sort((a, b) => {
         return 0.5 - Math.random();
       });
       let arrPostsWithoutLogin = [...placesData];
-      return arrPostsWithoutLogin;
+      return {
+        posts: arrPostsWithoutLogin,
+        nextPageToken: res?.data?.next_page_token || null,
+      };
     } catch (error) {
       console.error("❌ Error fetching posts without login:", error);
-      return []; // Return empty array on error
+      return { posts: [], nextPageToken: null };
     }
   },
   getPosts: async (reqOBj, radius, token, categoryNames) => {
@@ -324,38 +380,81 @@ export const apiHandler = {
         console.log("🌐 Using REAL Google Places API");
 
         if (categoryNames && categoryNames.length > 0) {
+          // Use Promise.allSettled instead of Promise.all to handle individual failures
           arrResponses = categoryNames.map(async (item, index) => {
-            return await axios.get(
-              `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${
-                reqOBj.latitude
-              }%2C${reqOBj.longitude}&radius=${
-                radius * 1000
-              }&type=restaurant&name=${item}&key=${GOOGLE_API_KEY}`
-            );
-          });
-          await Promise.all(arrResponses);
-          console.log("Response is", arrResponses);
-          arrResponses = arrResponses.map((item, index) => {
-            console.log("Item is", item._j.data);
-            return item._j.data.results;
-          });
-          arrResponses = arrResponses.flat(1);
-          placesData = arrResponses.map((item, index) => {
-            if (item.photos && item.photos.length > 0) {
-              return {
-                restaurantName: item.name,
-                restaurantRating: item.rating,
-                restaurantPrice: item.price_level,
-                restaurantImage:
-                  item.photos &&
-                  item.photos.length > 0 &&
-                  item.photos[0].photo_reference,
-                restaurantTiming: item.opening_hours,
-                restaurant_id: item.place_id,
-                isGoogle: true,
-              };
+            try {
+              const response = await axios.get(
+                `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${
+                  reqOBj.latitude
+                }%2C${reqOBj.longitude}&radius=${
+                  radius * 1000
+                }&type=restaurant&name=${encodeURIComponent(item)}&key=${GOOGLE_API_KEY}`
+              );
+              
+              // Check if Google API returned an error status
+              if (response.data.status && response.data.status !== "OK" && response.data.status !== "ZERO_RESULTS") {
+                console.warn(`⚠️ Google Places API error for category "${item}":`, response.data.status, response.data.error_message || "");
+                return { status: "error", data: response.data, category: item };
+              }
+              
+              return { status: "success", data: response.data, category: item };
+            } catch (error) {
+              console.error(`❌ Google Places API call failed for category "${item}":`, error.message);
+              return { status: "error", error: error.message, category: item };
             }
           });
+          
+          const settledResponses = await Promise.allSettled(arrResponses);
+          
+          // Process successful responses
+          const successfulResponses = settledResponses
+            .filter((result) => result.status === "fulfilled" && result.value.status === "success")
+            .map((result) => result.value.data);
+          
+          console.log(`✅ Google API: ${successfulResponses.length}/${categoryNames.length} categories succeeded`);
+          
+          // Extract results from successful responses
+          arrResponses = successfulResponses
+            .map((response) => {
+              if (response && response.results) {
+                return response.results;
+              }
+              return [];
+            })
+            .flat(1);
+          
+          // Filter and map places data
+          placesData = arrResponses
+            .filter((item) => {
+              if (!item) return false;
+              // Exclude hotels and shopping centers - only food-related places
+              const types = item.types || [];
+              const isHotel = types.includes("lodging");
+              const isShoppingMall = types.includes("shopping_mall");
+              return !isHotel && !isShoppingMall;
+            })
+            .map((item, index) => {
+              if (item.photos && item.photos.length > 0) {
+                return {
+                  restaurantName: item.name,
+                  restaurantRating: item.rating,
+                  restaurantPrice: item.price_level,
+                  restaurantImage:
+                    item.photos &&
+                    item.photos.length > 0 &&
+                    item.photos[0].photo_reference,
+                  restaurantTiming: item.opening_hours,
+                  restaurant_id: item.place_id,
+                  latitude: item.geometry?.location?.lat,
+                  longitude: item.geometry?.location?.lng,
+                  isGoogle: true,
+                };
+              }
+              return null;
+            })
+            .filter((item) => item !== null); // Remove null entries
+          
+          console.log(`📍 Found ${placesData.length} Google Places restaurants`);
         }
       }
 
@@ -364,12 +463,37 @@ export const apiHandler = {
         return 0.5 - Math.random();
       });
 
-      // Get backend posts
-      let response = await axios.post(BASE_URL + "index-distance", reqOBj, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      // Get backend posts - include radius in request body
+      // Note: Continue with backend API call even if Google Places API failed
+      let backendReqObj = {
+        ...reqOBj,
+        radius: radius, // Add radius in kilometers (already converted from miles)
+      };
+      
+      console.log("📤 Backend API Request:", {
+        endpoint: BASE_URL + "index-distance",
+        payload: backendReqObj,
+        hasToken: !!token,
+        googlePlacesCount: placesData.length,
       });
+      
+      let response;
+      try {
+        response = await axios.post(BASE_URL + "index-distance", backendReqObj, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+      } catch (backendError) {
+        // If backend fails, still return Google Places data if available
+        console.error("❌ Backend API failed, but continuing with Google Places data:", backendError.message);
+        if (placesData.length > 0) {
+          console.log("✅ Returning Google Places data only");
+          return placesData;
+        }
+        // Re-throw if no Google Places data available
+        throw backendError;
+      }
 
       let arrPosts = [];
       if (response.data.post && response.data.post.length > 0) {
@@ -393,8 +517,42 @@ export const apiHandler = {
       }
       return arrPosts;
     } catch (error) {
-      console.log("Error fetching posts:", error);
-      // Return empty array on error
+      console.log("❌ Error fetching posts:", error);
+      console.log("📊 Error details:", {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        endpoint: BASE_URL + "index-distance",
+        requestPayload: reqOBj,
+        radius: radius,
+      });
+      
+      // If it's a 500 error, log more details
+      if (error.response?.status === 500) {
+        console.error("🔥 Server Error (500):", {
+          message: error.response?.data?.message || "Internal server error",
+          error: error.response?.data?.error,
+          stack: error.response?.data?.stack,
+        });
+        
+        // Check if error response contains Google Places API error
+        if (error.response?.data?.status === "UNKNOWN_ERROR" || 
+            error.response?.data?.html_attributions !== undefined) {
+          console.warn("⚠️ This appears to be a Google Places API error, not a backend error");
+          console.warn("💡 Suggestion: Check Google API key, quota, or use USE_MOCK_DATA flag");
+        }
+      }
+      
+      // If we have Google Places data (initialized at top of try block), return it even if backend failed
+      // placesData is declared at the top of try block, so it should be accessible here
+      if (typeof placesData !== 'undefined' && Array.isArray(placesData) && placesData.length > 0) {
+        console.log("✅ Returning Google Places data despite error");
+        return placesData;
+      }
+      
+      // Return empty array on error if no Google Places data available
+      console.warn("⚠️ No data available, returning empty array");
       return [];
     }
   },
@@ -413,26 +571,39 @@ export const apiHandler = {
           }&type=restaurant&key=${GOOGLE_API_KEY}`
         );
         console.log("Places data is", placesData);
-        let placesData = res?.data?.results?.map((item, index) => {
-          if (item.photos && item.photos.length > 0) {
-            return {
-              restaurantName: item.name,
-              restaurantRating: item.rating,
-              restaurantPrice: item.price_level,
-              restaurantImage:
-                item.photos &&
-                item.photos.length > 0 &&
-                item.photos[0].photo_reference,
-              restaurantTiming: item.opening_hours,
-              restaurant_id: item.place_id,
-              isGoogle: true,
-            };
-          }
-        });
+        let placesData = res?.data?.results
+          ?.filter((item) => {
+            // Exclude hotels and shopping centers - only food-related places
+            const types = item.types || [];
+            const isHotel = types.includes("lodging");
+            const isShoppingMall = types.includes("shopping_mall");
+            return !isHotel && !isShoppingMall;
+          })
+          ?.map((item, index) => {
+            if (item.photos && item.photos.length > 0) {
+              return {
+                restaurantName: item.name,
+                restaurantRating: item.rating,
+                restaurantPrice: item.price_level,
+                restaurantImage:
+                  item.photos &&
+                  item.photos.length > 0 &&
+                  item.photos[0].photo_reference,
+                restaurantTiming: item.opening_hours,
+                restaurant_id: item.place_id,
+                isGoogle: true,
+              };
+            }
+          });
         placesData = placesData.sort((a, b) => {
           return 0.5 - Math.random();
         });
-        let response = await axios.post(BASE_URL + "index-distance", reqOBj, {
+        // Include radius in request body for backend API
+        let backendReqObj = {
+          ...reqOBj,
+          radius: radius, // Add radius in kilometers (already converted from miles)
+        };
+        let response = await axios.post(BASE_URL + "index-distance", backendReqObj, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -519,6 +690,10 @@ export const apiHandler = {
   },
   saveUserPreference: async (reqObj, token) => {
     try {
+      if (!validateToken(token)) {
+        console.error("❌ saveUserPreference: Token validation failed");
+        throw new Error("No token provided - cannot save preferences");
+      }
       console.log("💾 Saving user preferences:", {
         url: BASE_URL + "user-setting",
         payload: reqObj,
@@ -623,6 +798,10 @@ export const apiHandler = {
   },
   getFavoriteRestaurants: async (token) => {
     try {
+      if (!validateToken(token)) {
+        console.error("❌ getFavoriteRestaurants: Token validation failed");
+        return [];
+      }
       let response = await axios.get(BASE_URL + "favorite-post", {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -688,6 +867,10 @@ export const apiHandler = {
   },
   getGoogleLikedPosts: async (token) => {
     try {
+      if (!validateToken(token)) {
+        console.error("❌ getGoogleLikedPosts: Token validation failed");
+        return [];
+      }
       let response = await axios.get(BASE_URL + "userlikedgooglepost", {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -890,6 +1073,10 @@ export const apiHandler = {
   },
   getLikedRestaurants: async (token) => {
     try {
+      if (!validateToken(token)) {
+        console.error("❌ getLikedRestaurants: Token validation failed");
+        return [];
+      }
       console.log("🍽️ FAVORITE RESTAURANTS API - Starting request...");
       console.log("📍 API Endpoint:", BASE_URL + "userfavoriteplace");
       console.log("🔑 Token:", token ? "Present" : "Missing");
@@ -1032,6 +1219,10 @@ export const apiHandler = {
   },
   getAdminPanelAdvertisements: async (token) => {
     try {
+      if (!validateToken(token)) {
+        console.error("❌ getAdminPanelAdvertisements: Token validation failed");
+        return [];
+      }
       let response = await axios.get(BASE_URL + "get-advertisements", {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -1069,6 +1260,10 @@ export const apiHandler = {
   },
   userSessionAPI: async (token, reqObj) => {
     try {
+      if (!validateToken(token)) {
+        console.error("❌ userSessionAPI: Token validation failed");
+        throw new Error("No token provided - cannot track session");
+      }
       let response = await axios.post(BASE_URL + "session", reqObj, {
         headers: {
           Authorization: `Bearer ${token}`,

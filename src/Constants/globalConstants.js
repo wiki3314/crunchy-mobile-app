@@ -15,7 +15,7 @@ export const moderateScale = (number) => {
   return 1.9 * number;
 };
 
-export const VIBRATION_PATTERN = [0, 100];
+export const VIBRATION_PATTERN = [0, 40];
 
 export const ratingsData = [1, 2, 3, 4, 5];
 
@@ -42,13 +42,13 @@ export const GOOGLE_API_KEY = "AIzaSyCLb-WobrzT3gvpXDLkNYPWbIpd30bxKLQ";
 export const USE_MOCK_DATA = false;
 
 export const errorVibrationPattern =
-  Platform.OS == "ios" ? [0, 200] : [0, 200, 100, 70];
+  Platform.OS == "ios" ? [0, 50] : [0, 50];
 
 export const userSuccessPattern =
-  Platform.OS == "ios" ? [0, 60] : [0, 100, 60, 150];
+  Platform.OS == "ios" ? [0, 30] : [0, 30];
 
 export const searchVibrationPattern =
-  Platform.OS == "ios" ? [0, 100] : [0, 100, 120, 250];
+  Platform.OS == "ios" ? [0, 30] : [0, 30];
 
 export const imageAdsType = ["jpg", "jpeg", "png"];
 

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Alert,
   Animated,
   Easing,
   Image,
@@ -19,7 +20,9 @@ import {
   Vibration,
   View,
   ActivityIndicator,
+  Linking,
 } from "react-native";
+import Geolocation from "@react-native-community/geolocation";
 import { useDispatch, useSelector } from "react-redux";
 import { colors } from "../Constants/colors";
 import { commonStyles } from "../Constants/commonStyles";
@@ -59,6 +62,7 @@ import {
   updateFavouritePlaces,
   updateLikedPosts,
   updatePost,
+  setLocation,
 } from "../Redux/actions/actions";
 import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons";
 import DeletePostModal from "./DeletePostModal";
@@ -79,6 +83,7 @@ import { BannerAd, BannerAdSize } from "react-native-google-mobile-ads";
 import InAppReview from "react-native-in-app-review";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import DoubleClick from "./DoubleClick";
+import CommonButton from "./CommonButton";
 
 // Google AdMob Banner Ad IDs (test IDs from old project)
 const bannerAdId =
@@ -102,6 +107,10 @@ export default function SinglePostComponent({}) {
 
   const accessToken = useSelector((state) => state.accessToken);
   const allPosts = useSelector((state) => state.allPosts);
+  const allPostsRef = useRef(allPosts);
+  useEffect(() => {
+    allPostsRef.current = allPosts;
+  }, [allPosts]);
   const userDetails = useSelector((state) => state.userData);
   const userLocation = useSelector((state) => state.userLocation);
   const loadNewPosts = useSelector((state) => state.loadNewPosts);
@@ -136,33 +145,113 @@ export default function SinglePostComponent({}) {
   const [showErrorMessage, setShowErrorMessage] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [deletedPostIndex, setDeletedPostIndex] = useState(0);
-  const [componentHeight, setComponentHeight] = useState(0);
+  const [componentHeight, setComponentHeight] = useState(windowHeight);
   const [likingPost, setLikingPost] = useState(false);
   const [opacity] = useState(new Animated.Value(0));
   const [playOpacity] = useState(new Animated.Value(0));
-  const [likeOpacity, setLikeOpacity] = useState(0);
-  const [playPauseOpacity, setPlayPauseOpacity] = useState(0);
   const [showLoadingMorePosts, setShowLoadingMorePosts] = useState(false);
   const [currentIncrementValue, setCurrentIncrementValue] = useState(1);
   const [isPausingVideo, setIsPausingVideo] = useState(false);
   const [isPlayingVideo, setIsPlayingVideo] = useState(false);
-
-  opacity.addListener(({ value }) => {
-    setLikeOpacity(value);
-  });
-
-  playOpacity.addListener(({ value }) => {
-    setPlayPauseOpacity(value);
-  });
+  const [currentPostImageIndex, setCurrentPostImageIndex] = useState(0);
+  const [hasLoadedCache, setHasLoadedCache] = useState(false);
 
   const videoRef = useRef();
 
   const carouselRef = useRef();
+  
+  // Track loading state to prevent multiple simultaneous loading indicators
+  const isLoadingRef = useRef(false);
+  const loadingOperationsRef = useRef(new Set());
 
   const navigation = useNavigation();
   const dispatch = useDispatch();
 
   const isFocused = useIsFocused();
+  const POSTS_CACHE_KEY = "cachedPosts_loggedIn";
+  const PAGE_SIZE = 9;
+  const lastLoadMoreLengthRef = useRef(0);
+
+  // Helper function to safely set loading state
+  const setLoadingState = (loading, title = "", operationId = "") => {
+    if (loading) {
+      // If already loading, just add this operation to the set
+      if (operationId) {
+        loadingOperationsRef.current.add(operationId);
+      }
+      if (!isLoadingRef.current) {
+        isLoadingRef.current = true;
+        setIsLoading(true);
+        if (title) {
+          setLoaderTitle(title);
+        }
+      } else if (title) {
+        // Update title if different operation is loading
+        setLoaderTitle(title);
+      }
+    } else {
+      // Remove operation from set
+      if (operationId) {
+        loadingOperationsRef.current.delete(operationId);
+      }
+      // Only set loading to false if no other operations are in progress
+      if (loadingOperationsRef.current.size === 0 && isLoadingRef.current) {
+        isLoadingRef.current = false;
+        setIsLoading(false);
+      }
+    }
+  };
+
+  // Load cached posts on mount (offline-first approach)
+  useEffect(() => {
+      const loadCachedPosts = async () => {
+      // Only load cache if:
+      // 1. User is logged in (has accessToken)
+      // 2. Redux state has no posts (fresh app start)
+      // 3. Not explicitly requesting new posts
+      if (accessToken && allPosts.length === 0) {
+        const operationId = "hydrateCache";
+        try {
+          // Check cache without blocking UI if possible
+          console.log("📦 Loading cached posts from AsyncStorage...");
+          const cachedPosts = await helperFunctions.loadCachedPosts(
+            POSTS_CACHE_KEY
+          );
+          
+          if (cachedPosts && cachedPosts.posts && cachedPosts.posts.length > 0) {
+            console.log(`✅ Loaded ${cachedPosts.posts.length} cached posts`);
+            cachedPosts.posts.forEach((item) => {
+              if (item) item.isPaused = true;
+            });
+            dispatch(setAllPosts(cachedPosts.posts));
+            if (cachedPosts.posts.length > 0) {
+              setPostDetails(cachedPosts.posts[0]);
+            }
+            dispatch(setLoadNewPosts(false));
+          } else {
+            console.log("⚠️ No cached posts found - Will fetch from server");
+            // Only show loader if we HAVE to fetch from server and have no cache
+            setLoadingState(true, "Loading your feed...", operationId);
+          }
+        } catch (error) {
+          console.error("❌ Error loading cached posts:", error);
+        } finally {
+          setHasLoadedCache(true);
+          setLoadingState(false, "", operationId);
+        }
+      } else {
+        setHasLoadedCache(true);
+      }
+    };
+
+    loadCachedPosts();
+  }, []); // Only run once on mount
+
+  useEffect(() => {
+    if (allPosts.length === 0) {
+      lastLoadMoreLengthRef.current = 0;
+    }
+  }, [allPosts.length]);
 
   useEffect(() => {
     console.log("🔄 SinglePostComponent useEffect triggered", {
@@ -171,14 +260,37 @@ export default function SinglePostComponent({}) {
       hasAccessToken: !!accessToken,
       hasUserLocation: !!userLocation,
       categoriesCount: savedFoodCategories?.length,
+      existingPostsCount: allPosts.length,
     });
 
-    if (loadNewPosts && accessToken && userLocation) {
+    // Offline-first approach: Only fetch from server if:
+    // 1. loadNewPosts is true (explicit request to load/reload), OR
+    // 2. No cache exists (allPosts.length === 0) AND user is logged in AND location available
+    // This ensures we prioritize cache over server calls
+    const shouldFetchFromServer =
+      loadNewPosts || // Explicit refresh requested
+      (allPosts.length === 0 && accessToken && userLocation && hasLoadedCache); // No cache, need initial load
+
+    if (
+      shouldFetchFromServer &&
+      accessToken &&
+      userLocation &&
+      !isLoadingRef.current
+    ) {
+      // If loadNewPosts is true, clear cache before fetching
+      if (loadNewPosts) {
+      console.log("🔄 Explicit refresh requested - clearing cache before fetch");
+      helperFunctions.clearCachedPosts(POSTS_CACHE_KEY);
+      }
+      
       console.log("✅ Calling getServerPosts with:", {
         latitude: userLocation.latitude,
         longitude: userLocation.longitude,
         categories: savedFoodCategories?.length,
         radius: savedPostsRadius,
+        isInitialLoad: allPosts.length === 0,
+        willReplaceCache: true,
+        reason: loadNewPosts ? "explicit_refresh" : "no_cache",
       });
       setCurrentIncrementValue(1);
       getServerPosts();
@@ -187,7 +299,9 @@ export default function SinglePostComponent({}) {
         loadNewPosts,
         hasAccessToken: !!accessToken,
         hasUserLocation: !!userLocation,
-        userLocationValue: userLocation,
+        alreadyLoading: isLoadingRef.current,
+        existingPostsCount: allPosts.length,
+        shouldFetch: shouldFetchFromServer,
       });
     }
 
@@ -195,15 +309,20 @@ export default function SinglePostComponent({}) {
       item.isPaused = true;
     });
 
-    if (searchingForQuickBites) {
+    // Prevent concurrent calls - if getServerPosts is running, don't start searchQuickBitesPlaces
+    if (searchingForQuickBites && !isLoadingRef.current) {
       searchQuickBitesPlaces();
     }
-  }, [isFocused, loadNewPosts, accessToken, userLocation]);
+  }, [isFocused, loadNewPosts, accessToken, userLocation, hasLoadedCache]);
 
   const searchQuickBitesPlaces = async () => {
+    const operationId = "searchQuickBites";
+    // Prevent concurrent calls
+    if (isLoadingRef.current && loadingOperationsRef.current.has(operationId)) {
+      return;
+    }
     try {
-      setIsLoading(true);
-      setLoaderTitle(`Fetching ${searchedQuickBitesName} restaurants`);
+      setLoadingState(true, `Fetching ${searchedQuickBitesName} restaurants`, operationId);
       let arrPostsWithAdminAds = [];
       let arrPostsWithAllAds = [];
       let response = await axios.get(
@@ -211,28 +330,38 @@ export default function SinglePostComponent({}) {
           userLocation.latitude
         }%2C${userLocation.longitude}&radius=${
           savedPostsRadius * 1000
-        }&type=restaurant&name=${searchedQuickBitesName}&key=${GOOGLE_API_KEY}`
+        }&type=restaurant&keyword=${encodeURIComponent(
+          searchedQuickBitesName
+        )}&key=${GOOGLE_API_KEY}`
       );
       let placesData = [];
-      placesData = response?.data?.results?.map((item, index) => {
-        if (item.photos && item.photos.length > 0) {
-          return {
-            restaurantName: item.name,
-            restaurantRating: item.rating,
-            restaurantPrice: item.price_level,
-            restaurantImage:
-              item.photos &&
-              item.photos.length > 0 &&
-              item.photos[0].photo_reference,
-            restaurantTiming: item.opening_hours,
-            restaurant_id: item.place_id,
-            isGoogle: true,
-            address: item.vicinity || null,
-            latitude: item.geometry?.location?.lat || null,
-            longitude: item.geometry?.location?.lng || null,
-          };
-        }
-      });
+      placesData = response?.data?.results
+        ?.filter((item) => {
+          // Exclude hotels and shopping centers - only food-related places
+          const types = item.types || [];
+          const isHotel = types.includes("lodging");
+          const isShoppingMall = types.includes("shopping_mall");
+          return !isHotel && !isShoppingMall;
+        })
+        ?.map((item, index) => {
+          if (item.photos && item.photos.length > 0) {
+            return {
+              restaurantName: item.name,
+              restaurantRating: item.rating,
+              restaurantPrice: item.price_level,
+              restaurantImage:
+                item.photos &&
+                item.photos.length > 0 &&
+                item.photos[0].photo_reference,
+              restaurantTiming: item.opening_hours,
+              restaurant_id: item.place_id,
+              isGoogle: true,
+              address: item.vicinity || null,
+              latitude: item.geometry?.location?.lat || null,
+              longitude: item.geometry?.location?.lng || null,
+            };
+          }
+        });
 
       let totalPostsCount = placesData.length;
       for (var i = 0; i < totalPostsCount; i++) {
@@ -276,26 +405,116 @@ export default function SinglePostComponent({}) {
       });
       setPostDetails(arrPostsWithAllAds[0]);
       dispatch(setAllPosts(arrPostsWithAllAds));
+      lastLoadMoreLengthRef.current = arrPostsWithAllAds.length;
+      // Save to AsyncStorage cache
+      await helperFunctions.saveCachedPosts(arrPostsWithAllAds, POSTS_CACHE_KEY, 10);
       dispatch(setSearchingForQuickBites(""));
       if (placesData.length > 0) {
         carouselRef.current.scrollToIndex({ index: 0 });
       }
-      setIsLoading(false);
+      setLoadingState(false, "", operationId);
     } catch (err) {
       console.log("Error searching quick bites:", err);
       dispatch(setSearchingForQuickBites(""));
-      setIsLoading(false);
+      setLoadingState(false, "", operationId);
     }
   };
 
+  const requestLocation = () => {
+    setLoadingState(true, "Fetching location...", "requestLocation");
+    const tryGetLocation = (useHighAccuracy = true) => {
+      Geolocation.getCurrentPosition(
+        (info) => {
+          const coordinates = {
+          latitude: info.coords.latitude,
+          longitude: info.coords.longitude,
+        };
+        dispatch(setLocation(coordinates));
+        helperFunctions.saveCachedLocation(coordinates);
+        setLoadingState(false, "", "requestLocation");
+      },
+        (err) => {
+          if (useHighAccuracy) {
+            tryGetLocation(false);
+          } else {
+            setLoadingState(false, "", "requestLocation");
+            if (err.code === 1) {
+              Alert.alert(
+                "Location Required",
+                "Nearby restaurants require location permission. Please enable it in settings to continue.",
+                [
+                  { text: "Retry", onPress: () => requestLocation() },
+                  { text: "Open Settings", onPress: () => Linking.openSettings() },
+                ],
+                { cancelable: false }
+              );
+            } else {
+              Alert.alert(
+                "Location Error",
+                "We couldn't fetch your location. Please check your GPS settings and try again.",
+                [
+                  { text: "Retry", onPress: () => requestLocation() },
+                ],
+                { cancelable: false }
+              );
+            }
+          }
+        },
+        {
+          enableHighAccuracy: useHighAccuracy,
+          timeout: 10000,
+          maximumAge: 0,
+        }
+      );
+    };
+    tryGetLocation(true);
+  };
+
   const getServerPosts = async () => {
+    const operationId = "getServerPosts";
+    // Prevent concurrent calls
+    if (isLoadingRef.current && loadingOperationsRef.current.has(operationId)) {
+      console.log("⚠️ getServerPosts: Already loading, skipping");
+      return;
+    }
+    
+    // ✅ Set loading ref synchronously before any awaits to prevent race conditions
+    isLoadingRef.current = true;
+    loadingOperationsRef.current.add(operationId);
+    
+    // Ensure we have required data
+    if (!userLocation || !userLocation.latitude || !userLocation.longitude) {
+      console.error("❌ getServerPosts: User location not available");
+      dispatch(setLoadNewPosts(false));
+      return;
+    }
+    
+    if (!accessToken) {
+      console.error("❌ getServerPosts: Access token not available");
+      dispatch(setLoadNewPosts(false));
+      return;
+    }
+    
     try {
-      setIsLoading(true);
-      setLoaderTitle("Searching for yummy restaurants");
-      let radiusInMiles = savedPostsRadius * 1.609;
+      setLoadingState(true, "Searching for yummy restaurants", operationId);
+      
+      // Always use user's location and saved radius
+      const radiusInMiles = savedPostsRadius || 20; // Default to 20 miles if not set
+      const radiusInKm = radiusInMiles * 1.609; // Convert miles to kilometers
+      const MIN_RESTAURANTS_THRESHOLD = 5; // Minimum restaurants to show notification
       let response;
       let arrPostsWithAdminAds = [];
       let arrPostsWithAllAds = [];
+      
+      console.log("📍 getServerPosts: Fetching posts with:", {
+        latitude: userLocation.latitude,
+        longitude: userLocation.longitude,
+        radiusKm: radiusInKm,
+        radiusMiles: radiusInMiles,
+        savedRadiusFromPreferences: savedPostsRadius,
+        categoriesCount: savedFoodCategories?.length || 0,
+      });
+      
       if (savedFoodCategories && savedFoodCategories.length > 0) {
         let arrCategoryNames = [];
         let arrCategoryIds = [];
@@ -312,7 +531,7 @@ export default function SinglePostComponent({}) {
         };
         response = await apiHandler.getPosts(
           reqObj,
-          radiusInMiles,
+          radiusInKm, // Pass radius in kilometers
           accessToken,
           arrCategoryNames
         );
@@ -324,7 +543,7 @@ export default function SinglePostComponent({}) {
         };
         response = await apiHandler.getPosts(
           reqObj,
-          radiusInMiles,
+          radiusInKm, // Pass radius in kilometers
           accessToken
         );
       }
@@ -336,6 +555,38 @@ export default function SinglePostComponent({}) {
           };
         }
       });
+      
+      // ✅ Frontend radius filtering - validate posts are within selected radius
+      const filteredResponse = response.filter((item) => {
+        if (!item) return false;
+        
+        // Skip ads and special items
+        if (item.isAdvertisement || item.isGoogleAd) return true;
+        
+        // If post has latitude/longitude, calculate distance
+        if (item.latitude && item.longitude && userLocation) {
+          const distance = helperFunctions.calculateDistance(
+            userLocation.latitude,
+            userLocation.longitude,
+            item.latitude,
+            item.longitude
+          );
+          return distance <= radiusInMiles;
+        }
+        
+        // If no coordinates, include it (backend should have filtered, but include for safety)
+        return true;
+      });
+      
+      console.log(`📍 getServerPosts: Radius filtering - ${response.length} posts before, ${filteredResponse.length} posts after (radius: ${radiusInMiles} miles)`);
+      
+      // Check if insufficient restaurants found (notification will be shown after ads are added)
+      if (filteredResponse.length < MIN_RESTAURANTS_THRESHOLD) {
+        console.warn(`⚠️ getServerPosts: Only ${filteredResponse.length} restaurants found within ${radiusInMiles} miles radius`);
+        // Show notification - will be handled after posts are set
+      }
+      
+      response = filteredResponse;
       let totalPostsCount = response.length;
       for (var i = 0; i < totalPostsCount; i++) {
         if (i % 4 == 0 && i != 0) {
@@ -376,29 +627,120 @@ export default function SinglePostComponent({}) {
           return item;
         }
       });
+      
+      // ✅ REPLACE cache with new posts (initial load or explicit reload)
+      console.log(`✅ getServerPosts: Fetched ${response.length} posts from API`);
+      console.log(`✅ getServerPosts: After adding ads, total posts: ${arrPostsWithAllAds.length}`);
+      console.log(`📊 getServerPosts: Initial load - Showing ${arrPostsWithAllAds.length} posts`);
+      
+      // Check if insufficient restaurants found (after adding ads, count actual restaurant posts)
+      const restaurantPostsCount = arrPostsWithAllAds.filter(
+        (item) => item && !item.isAdvertisement && !item.isGoogleAd
+      ).length;
+      
+      if (restaurantPostsCount < MIN_RESTAURANTS_THRESHOLD && restaurantPostsCount > 0) {
+        console.warn(
+          `⚠️ getServerPosts: Only ${restaurantPostsCount} restaurants found within ${radiusInMiles} miles radius`
+        );
+        // Only show toast if we actually have fewer than threshold but NOT 0
+        setCustomToastMessage(
+          `Only ${restaurantPostsCount} restaurant${
+            restaurantPostsCount === 1 ? "" : "s"
+          } found within ${radiusInMiles} miles. Try increasing the radius in Search settings.`
+        );
+        setShowCustomToast(true);
+      } else if (restaurantPostsCount === 0 && (!arrPostsWithAllAds || arrPostsWithAllAds.length === 0)) {
+        console.warn(
+          `⚠️ getServerPosts: No restaurants found within ${radiusInMiles} miles radius`
+        );
+        
+        // ✅ Only show blocking alert if we don't have any existing posts visible
+        console.log(`📊 getServerPosts diagnostics: restaurantPostsCount=${restaurantPostsCount}, totalPostsVisible=${allPostsRef.current.length}`);
+        
+        if (allPostsRef.current.length === 0) {
+          Alert.alert(
+            "No Restaurants Found",
+            `We couldn't find any restaurants within your ${Math.round(radiusInMiles)} miles radius. Would you like to increase the search radius?`,
+            [
+              { text: "No", style: "cancel" },
+              {
+                text: "Increase Radius",
+                onPress: () => navigation.navigate(navigationStrings.SearchScreen),
+              },
+            ]
+          );
+        } else {
+          // If we already have posts, just show a non-blocking toast
+          setCustomToastMessage("No new restaurants found in this area.");
+          setShowCustomToast(true);
+        }
+      }
+      
       setPostDetails(arrPostsWithAllAds[0]);
-      dispatch(setAllPosts(arrPostsWithAllAds));
+      dispatch(setAllPosts(arrPostsWithAllAds)); // This REPLACES all existing posts
+      // Save to AsyncStorage cache
+      await helperFunctions.saveCachedPosts(arrPostsWithAllAds, POSTS_CACHE_KEY, 10);
       if (arrPostsWithAllAds.length > 0) {
         carouselRef.current.scrollToIndex({ index: 0 });
       }
-      dispatch(setLoadNewPosts(false));
-      setIsLoading(false);
+      dispatch(setLoadNewPosts(false)); // Reset flag after loading
+      setLoadingState(false, "", operationId);
     } catch (err) {
       console.log("Error is", err);
       dispatch(setLoadNewPosts(false));
-      setIsLoading(false);
+      setLoadingState(false, "", operationId);
     }
   };
 
   async function getNewPosts() {
+    // Add guard to prevent multiple simultaneous calls
+    console.log("🔵 getNewPosts() called");
+    console.log("🔵 showLoadingMorePosts =", showLoadingMorePosts);
+    console.log("🔵 allPosts.length =", allPosts.length);
+    
+    if (showLoadingMorePosts) {
+      console.log("⚠️ getNewPosts: Already loading, skipping...");
+      return;
+    }
+
+    // Validate required data
+    if (!userLocation || !userLocation.latitude || !userLocation.longitude) {
+      console.error("❌ getNewPosts: User location not available");
+      setShowLoadingMorePosts(false);
+      return;
+    }
+    
+    if (!accessToken) {
+      console.error("❌ getNewPosts: Access token not available");
+      setShowLoadingMorePosts(false);
+      return;
+    }
+    
     try {
       setShowLoadingMorePosts(true);
-      let updatedRadius =
-        (savedPostsRadius + 2 * currentIncrementValue) * 1.609;
+      
+      // Increase radius for load more (user's location + increased radius)
+      const baseRadiusMiles = savedPostsRadius || 20;
+      const updatedRadiusMiles = baseRadiusMiles + 2 * currentIncrementValue;
+      const updatedRadiusKm = updatedRadiusMiles * 1.609;
+      
+      console.log("📍 getNewPosts: Loading more posts with:", {
+        latitude: userLocation.latitude,
+        longitude: userLocation.longitude,
+        originalRadiusKm: baseRadiusMiles * 1.609,
+        originalRadiusMiles: baseRadiusMiles,
+        updatedRadiusKm: updatedRadiusKm,
+        updatedRadiusMiles: updatedRadiusMiles,
+        savedRadiusFromPreferences: savedPostsRadius,
+        increment: currentIncrementValue,
+        existingPostsCount: allPosts.length,
+      });
+      
       let arrPostsWithAdminAds = [];
       let arrPostsWithAllAds = [];
-      let arrPostsInState = [...allPosts];
+      let arrPostsInState = [...allPosts]; // Keep existing posts for appending
       let response;
+      
       if (savedFoodCategories && savedFoodCategories.length > 0) {
         let arrCategoryNames = [];
         let arrCategoryIds = [];
@@ -415,7 +757,7 @@ export default function SinglePostComponent({}) {
         };
         response = await apiHandler.getPosts(
           reqObj,
-          updatedRadius,
+          updatedRadiusKm, // Pass radius in kilometers
           accessToken,
           arrCategoryNames
         );
@@ -427,10 +769,34 @@ export default function SinglePostComponent({}) {
         };
         response = await apiHandler.getPosts(
           reqObj,
-          updatedRadius,
+          updatedRadiusKm, // Pass radius in kilometers
           accessToken
         );
       }
+      
+      // Validate response
+      if (!response || !Array.isArray(response)) {
+        console.error("❌ getNewPosts: Invalid response from API");
+        setShowLoadingMorePosts(false);
+        setCustomToastMessage("Failed to load more posts. Invalid response.");
+        setShowCustomToast(true);
+        return;
+      }
+      
+      // Set isPaused for all new posts
+      response = response.map((item, index) => {
+        if (item) {
+          return {
+            ...item,
+            isPaused: true,
+          };
+        }
+        return item;
+      }).filter((item) => item !== undefined && item !== null);
+      
+      // Filter out duplicates by restaurant_id
+      console.log(`📊 getNewPosts: Fetched ${response.length} posts from API before filtering duplicates`);
+      const responseBeforeFilter = response.length;
       response = response.filter((iPlace, index, self) => {
         if (iPlace) {
           if (iPlace.restaurant_id) {
@@ -442,13 +808,44 @@ export default function SinglePostComponent({}) {
               }) && iPlace
             );
           } else {
+            // For posts without restaurant_id, check by id
+            if (iPlace.id) {
+              return (
+                !arrPostsInState.some((iItem, iIndex) => {
+                  if (iItem && iItem.id) {
+                    return iItem.id == iPlace.id;
+                  }
+                }) && iPlace
+              );
+            }
             return iPlace;
           }
         }
       });
-      7;
-      let totalPostsCount = response.length;
-      for (var i = 0; i < totalPostsCount; i++) {
+      const newPostsCount = response.length;
+      const duplicatesRemoved = responseBeforeFilter - newPostsCount;
+      console.log(`📊 getNewPosts: After filtering duplicates - ${newPostsCount} new posts, ${duplicatesRemoved} duplicates removed`);
+      
+      // Check if there are no new posts after filtering duplicates
+      if (newPostsCount === 0) {
+        console.log("⚠️ getNewPosts: No new posts found after filtering duplicates");
+        console.log(`📍 Current radius: ${updatedRadiusMiles} miles (${updatedRadiusKm} km)`);
+        console.log(`📍 Try increasing radius or no more posts available in this area`);
+        setShowLoadingMorePosts(false);
+        // Show message to user that no more posts available
+        setCustomToastMessage("No more restaurants found. Try increasing the radius in Search settings.");
+        setShowCustomToast(true);
+        return;
+      }
+      
+      const limitedResponse = response.slice(0, PAGE_SIZE);
+      if (limitedResponse.length === 0) {
+        console.log("⚠️ getNewPosts: No additional posts after pagination limit");
+        setShowLoadingMorePosts(false);
+        return;
+      }
+
+      for (var i = 0; i < limitedResponse.length; i++) {
         if (i % 4 == 0 && i != 0) {
           let randomAdIndex = Math.floor(
             Math.random() * adminAdvertisements.length
@@ -465,11 +862,10 @@ export default function SinglePostComponent({}) {
               isPaused: false, // Video ads will auto-play when in view
             });
           } else {
-            // If no ads available, still push the post
-            arrPostsWithAdminAds.push(response[i]);
+            arrPostsWithAdminAds.push(limitedResponse[i]);
           }
         } else {
-          arrPostsWithAdminAds.push(response[i]);
+          arrPostsWithAdminAds.push(limitedResponse[i]);
         }
       }
       for (var j = 0; j < arrPostsWithAdminAds.length; j++) {
@@ -482,20 +878,37 @@ export default function SinglePostComponent({}) {
           arrPostsWithAllAds.push(arrPostsWithAdminAds[j]);
         }
       }
-      arrPostsWithAllAds = arrPostsWithAllAds.filter((item, index, self) => {
-        if (item) {
-          return item;
+      arrPostsWithAllAds = arrPostsWithAllAds.filter((item) => !!item);
+
+      const mergedPosts = [...arrPostsInState, ...arrPostsWithAllAds];
+      const maxCacheSize = 100;
+      const finalCache = mergedPosts.slice(-maxCacheSize);
+
+      console.log(`✅ getNewPosts: Appended ${arrPostsWithAllAds.length} posts`);
+      console.log(`📊 getNewPosts: Before: ${arrPostsInState.length}, After: ${finalCache.length} (max ${maxCacheSize})`);
+
+      setCurrentIncrementValue(currentIncrementValue + 1);
+
+      const currentPostStillExists = finalCache.some((item) => {
+        if (postDetails && postDetails.restaurant_id && item && item.restaurant_id) {
+          return item.restaurant_id === postDetails.restaurant_id;
         }
+        return false;
       });
-      let increment = currentIncrementValue;
-      arrPostsWithAllAds = [...arrPostsInState, ...arrPostsWithAllAds];
-      setCurrentIncrementValue(increment + 1);
-      setPostDetails(arrPostsWithAllAds[currentPostIndex]);
-      dispatch(setAllPosts(arrPostsWithAllAds));
+      if (!currentPostStillExists && finalCache.length > 0) {
+        setPostDetails(finalCache[0]);
+      }
+
+      dispatch(setAllPosts(finalCache));
+      await helperFunctions.saveCachedPosts(finalCache, POSTS_CACHE_KEY, 10);
+      lastLoadMoreLengthRef.current = finalCache.length;
       setShowLoadingMorePosts(false);
     } catch (err) {
-      console.log("Error loading new posts:", err);
+      console.error("❌ Error loading new posts:", err);
       setShowLoadingMorePosts(false);
+      // Show error message to user
+      setCustomToastMessage("Failed to load more posts. Please try again.");
+      setShowCustomToast(true);
     }
   }
 
@@ -506,28 +919,27 @@ export default function SinglePostComponent({}) {
   };
 
   const onCommentPress = async () => {
-    if (!accessToken || !userDetails) {
-      setErrorMessage("Please login to comment");
-      setShowErrorMessage(true);
-      return;
-    }
-    
+    // Allow viewing comments without login
+    // Login check will happen when trying to write a comment
+
     // Fetch fresh post data to get latest comments from database
     if (postDetails && postDetails.id && !postDetails.isGoogle) {
+      const operationId = "loadComments";
       try {
-        setIsLoading(true);
-        setLoaderTitle("Loading comments...");
+        setLoadingState(true, "Loading comments...", operationId);
         const response = await apiHandler.getPostById(postDetails.id);
         if (response && response.success && response.post) {
           // Transform comments to match frontend format
-          const formattedComments = (response.post.comments || []).map((comment) => ({
-            ...comment,
-            user: {
-              ...comment.user,
-              image: comment.user?.profile_picture || comment.user?.image,
-            },
-          }));
-          
+          const formattedComments = (response.post.comments || []).map(
+            (comment) => ({
+              ...comment,
+              user: {
+                ...comment.user,
+                image: comment.user?.profile_picture || comment.user?.image,
+              },
+            })
+          );
+
           // Update postDetails with fresh data including latest comments
           const updatedPost = {
             ...postDetails,
@@ -535,7 +947,7 @@ export default function SinglePostComponent({}) {
             like: response.post.likes || [],
           };
           setPostDetails(updatedPost);
-          
+
           // Also update Redux state to keep it in sync
           const updatedPosts = allPosts.map((item) => {
             if (item.id === postDetails.id && !item.isGoogle) {
@@ -549,14 +961,14 @@ export default function SinglePostComponent({}) {
           });
           dispatch(setAllPosts(updatedPosts));
         }
-        setIsLoading(false);
+        setLoadingState(false, "", operationId);
       } catch (error) {
         console.error("Error fetching fresh post data:", error);
-        setIsLoading(false);
+        setLoadingState(false, "", operationId);
         // Still open modal even if fetch fails
       }
     }
-    
+
     setShowCommentModal(true);
   };
 
@@ -570,13 +982,13 @@ export default function SinglePostComponent({}) {
       setLikingPost(true);
       Animated.timing(opacity, {
         toValue: 1,
-        duration: 200,
+        duration: 100,
         easing: Easing.linear,
         useNativeDriver: false,
       }).start(() => {
         Animated.timing(opacity, {
           toValue: 0,
-          duration: 250,
+          duration: 150,
           easing: Easing.linear,
           useNativeDriver: false,
         }).start(() => {
@@ -728,8 +1140,10 @@ export default function SinglePostComponent({}) {
       // This is optional - if it fails, the like operation should still succeed
       try {
         // Convert restaurant_id to string if it exists, or set to null if undefined/null
-        const restaurantId = post.restaurant_id ? String(post.restaurant_id) : null;
-        
+        const restaurantId = post.restaurant_id
+          ? String(post.restaurant_id)
+          : null;
+
         if (restaurantId && !restaurantId.startsWith("MOCK_")) {
           // Real restaurant - use data from the post
           // Build restaurant object from post data
@@ -804,11 +1218,16 @@ export default function SinglePostComponent({}) {
       // The post object must have an 'id' field that matches what's in the render function
       const postToUpdate = {
         id: post.id,
-        ...post
+        ...post,
       };
       dispatch(updateLikedPosts(postToUpdate));
       console.log("✅ Like operation completed successfully");
-      console.log("✅ Updated likedPosts with post id:", post.id, "post object:", postToUpdate);
+      console.log(
+        "✅ Updated likedPosts with post id:",
+        post.id,
+        "post object:",
+        postToUpdate
+      );
     } catch (error) {
       console.error("❌ Error in like/unlike operation:", error);
       console.error("Error details:", error.response?.data || error.message);
@@ -1009,9 +1428,9 @@ export default function SinglePostComponent({}) {
       sharedLink = `applicationPost/?${item.restaurant_id}`;
     }
 
+    const operationId = "sharePost";
     try {
-      setIsLoading(true);
-      setLoaderTitle("Generating share link");
+      setLoadingState(true, "Generating share link", operationId);
 
       // Fallback link in case Dynamic Links API is not available
       let link = `https://crunchyapp.page.link/${sharedLink}`;
@@ -1064,8 +1483,8 @@ export default function SinglePostComponent({}) {
       }
 
       const shareOptions = {
-        title: "Found this on Crunchii",
-        message: `Hey! I found this restaurant on Crunchii, check it out.\n${link}`,
+        title: "Found this on Crunchy",
+        message: `Found this on Crunchy — check it out! ${item.restaurantName}\n${link}`,
         ...(base64Image && {
           url: `data:image/jpeg;base64,${base64Image}`,
         }),
@@ -1075,7 +1494,7 @@ export default function SinglePostComponent({}) {
     } catch (error) {
       console.error("Share Error:", error);
     } finally {
-      setIsLoading(false);
+      setLoadingState(false, "", operationId);
     }
   };
 
@@ -1113,16 +1532,62 @@ export default function SinglePostComponent({}) {
     setShowExpandedReview(!showExpandedReview);
   };
 
+  const onPostSideTap = (side, item) => {
+    const images = item.isGoogle
+      ? item.restaurantImages || [item.restaurantImage]
+      : item.file || [];
+
+    if (images.length <= 1) return;
+
+    if (side === "right") {
+      if (currentPostImageIndex < images.length - 1) {
+        setCurrentPostImageIndex(currentPostImageIndex + 1);
+      } else {
+        setCurrentPostImageIndex(0);
+      }
+    } else {
+      if (currentPostImageIndex > 0) {
+        setCurrentPostImageIndex(currentPostImageIndex - 1);
+      } else {
+        setCurrentPostImageIndex(images.length - 1);
+      }
+    }
+  };
+
   const handleGesture = (event, item) => {
     if (event.nativeEvent.state == 5) {
       if (event.nativeEvent.translationX < -50) {
-        navigation.navigate(navigationStrings.RestaurantDetails, {
-          restaurant_id: item.restaurant_id,
-        });
+        // Use the same navigation logic as onRestaurantImagePress
+        // This works for both Google posts and in-app posts
+        if (item && (item.restaurant_id || (item.restaurant && typeof item.restaurant === "object" && item.restaurant.id))) {
+          const restaurantId = item.restaurant_id || (item.restaurant && typeof item.restaurant === "object" && item.restaurant.id);
+          if (restaurantId) {
+            navigation.navigate(navigationStrings.RestaurantDetails, {
+              restaurant_id: restaurantId,
+            });
+          }
+        }
       } else if (event.nativeEvent.translationX > 50) {
         navigation.navigate(navigationStrings.SearchScreen);
       }
     }
+  };
+
+  const getImageSource = (restaurantImage) => {
+    if (!restaurantImage || restaurantImage === "" || typeof restaurantImage !== 'string') {
+      console.log("⚠️ SinglePostComponent getImageSource: No valid restaurantImage provided");
+      return imagePath.americanFoodImage;
+    }
+    
+    // Check if it's already a full URL
+    if (restaurantImage.startsWith("http://") || restaurantImage.startsWith("https://")) {
+      console.log("✅ SinglePostComponent getImageSource: Already a full URL");
+      return { uri: restaurantImage };
+    }
+    
+    // Build Google Places photo URL - Use encodeURIComponent
+    const imageUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=700&photo_reference=${encodeURIComponent(restaurantImage.trim())}&key=${GOOGLE_API_KEY}`;
+    return { uri: imageUrl };
   };
 
   const renderPost = (item) => {
@@ -1132,214 +1597,274 @@ export default function SinglePostComponent({}) {
       likedGooglePlaces.findIndex((innerItem, innerIndex) => {
         return innerItem.restaurant_id == item.restaurant_id;
       }) != -1;
+    if (!item) {
+      return null;
+    }
+
+    const currentImage =
+      item.isGoogle && item.restaurantImages && item.restaurantImages.length > 0
+        ? item.restaurantImages[currentPostImageIndex] || item.restaurantImage
+        : item.restaurantImage;
+
+    const imageSource = currentImage
+      ? getImageSource(currentImage)
+      : imagePath.americanFoodImage;
+
     return (
-      item && (
-        <ImageBackground
-          resizeMode="cover"
-          source={
-            item && item.restaurantImage && item.restaurantImage != ""
-              ? {
-                  uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${700}&photo_reference=${
-                    item.restaurantImage
-                  }&key=${GOOGLE_API_KEY}`,
-                }
-              : imagePath.americanFoodImage
-          }
-          style={{ height: componentHeight, width: windowWidth }}
+      <ImageBackground
+        resizeMode="cover"
+        source={imageSource}
+        style={{ height: componentHeight, width: windowWidth }}
+        onError={(error) => {
+          console.error(
+            "❌ SinglePostComponent ImageBackground load error:",
+            error.nativeEvent.error
+          );
+          console.error(
+            "❌ Failed URL:",
+            typeof imageSource === "object" && imageSource.uri
+              ? imageSource.uri.substring(0, 100)
+              : "invalid source"
+          );
+        }}
+        onLoad={() => {
+          console.log(
+            "✅ SinglePostComponent ImageBackground loaded successfully"
+          );
+        }}
+      >
+        <DoubleClick
+          customStyle={commonStyles.flexFull}
+          singleTap={() => {
+            console.log("single tap");
+          }}
+          doubleTap={() => {
+            onLikeUnlikePostPress(item, isLiked);
+          }}
+          delay={200}
         >
-          {/* <TouchableOpacity style={{ flex: 1, backgroundColor: 'transparent' }} activeOpacity={1} onPress={() => {
-                onPostLeftSidePress(item, isLiked)
-            }} > */}
-          <DoubleClick
-            customStyle={commonStyles.flexFull}
-            singleTap={() => {
-              console.log("single tap");
+          <View style={styles.sideTapContainer}>
+            <TouchableOpacity
+              style={styles.leftTap}
+              activeOpacity={1}
+              onPress={() => onPostSideTap("left", item)}
+            />
+            <TouchableOpacity
+              style={styles.rightTap}
+              activeOpacity={1}
+              onPress={() => onPostSideTap("right", item)}
+            />
+          </View>
+          <PanGestureHandler
+            failOffsetY={[-5, 5]}
+            activeOffsetX={[-5, 5]}
+            onHandlerStateChange={(event) => {
+              handleGesture(event, item);
             }}
-            doubleTap={() => {
-              onLikeUnlikePostPress(item, isLiked);
-            }}
-            delay={200}
           >
-            <PanGestureHandler
-              failOffsetY={[-5, 5]}
-              activeOffsetX={[-5, 5]}
-              onHandlerStateChange={(event) => {
-                handleGesture(event, item);
+            <View
+              pointerEvents="box-none"
+              style={{
+                flex: 1,
+                backgroundColor: "transparent",
+                flexDirection: "row",
+                zIndex: 20,
               }}
             >
               <View
+                pointerEvents="box-none"
                 style={{
-                  flex: 1,
-                  backgroundColor: "transparent",
-                  flexDirection: "row",
+                  minHeight: moderateScale(100),
+                  width: windowWidth * 0.7,
+                  padding: moderateScale(5),
+                  position: "absolute",
+                  left: moderateScale(0),
+                  bottom: windowHeight * 0.2,
+                  zIndex: 21,
                 }}
               >
-                <View
-                  style={{
-                    minHeight: moderateScale(100),
-                    width: windowWidth * 0.7,
-                    padding: moderateScale(5),
-                    position: "absolute",
-                    left: moderateScale(0),
-                    bottom: windowHeight * 0.2,
+                <Text
+                  onPress={() => {
+                    onRestaurantImagePress(item);
+                  }}
+                  style={commonStyles.textWhite(32, {
+                    textShadowColor: colors.black,
+                    textShadowOffset: { width: 5, height: 5 },
+                    textShadowRadius: 10,
+                    zIndex: 99,
+                  })}
+                >
+                  {item.restaurantName}
+                </Text>
+                {item && item.restaurantRating && (
+                  <View
+                    pointerEvents="none"
+                    style={{
+                      backgroundColor: "rgba(0,0,0,0.85)",
+                      paddingHorizontal: moderateScale(4),
+                      paddingVertical: moderateScale(2),
+                      borderRadius: moderateScale(4),
+                      alignSelf: "flex-start",
+                      marginTop: moderateScale(4),
+                      zIndex: 99,
+                    }}
+                  >
+                    {helperFunctions.getStarRatings(item.restaurantRating)}
+                    <Text
+                      style={commonStyles.textWhite(18, {
+                        textShadowColor: colors.black,
+                        textShadowOffset: { width: 2, height: 2 },
+                        textShadowRadius: 5,
+                        fontWeight: "700",
+                        color: colors.white,
+                      })}
+                    >
+                      {item.restaurantRating}
+                    </Text>
+                  </View>
+                )}
+                {item &&
+                item.restaurantPrice !== null &&
+                item.restaurantPrice !== undefined &&
+                typeof item.restaurantPrice === "number" &&
+                item.restaurantPrice > 0 ? (
+                  <View
+                    pointerEvents="none"
+                    style={{
+                      backgroundColor: "rgba(0,0,0,0.85)",
+                      paddingHorizontal: moderateScale(4),
+                      paddingVertical: moderateScale(2),
+                      borderRadius: moderateScale(4),
+                      alignSelf: "flex-start",
+                      marginTop: moderateScale(4),
+                      zIndex: 99,
+                    }}
+                  >
+                    <Text
+                      style={commonStyles.textWhite(18, {
+                        textShadowColor: colors.black,
+                        textShadowOffset: { width: 1, height: 1 },
+                        textShadowRadius: 3,
+                        fontWeight: "700",
+                        color: colors.white,
+                      })}
+                    >
+                      $ {item.restaurantPrice}
+                    </Text>
+                  </View>
+                ) : null}
+                <Text
+                  numberOfLines={4}
+                  style={commonStyles.textWhite(14, {
+                    fontWeight: "400",
+                    width: "80%",
+                    color: colors.grey,
+                    textShadowColor: colors.black,
+                    textShadowOffset: { width: 5, height: 5 },
+                    textShadowRadius: 10,
+                    zIndex: 99,
+                  })}
+                >
+                  {item && item.review}
+                </Text>
+              </View>
+              <View
+                pointerEvents="box-none"
+                style={{
+                  minHeight: moderateScale(100),
+                  minWidth: moderateScale(40),
+                  // padding: moderateScale(5),
+                  marginBottom: moderateScale(5),
+                  position: "absolute",
+                  // left: windowWidth * 0.6,
+                  right: moderateScale(0),
+                  bottom: windowHeight * 0.2,
+                  alignItems: "center",
+                  zIndex: 21,
+                }}
+              >
+                <TouchableOpacity
+                  style={{ alignItems: "center" }}
+                  onPress={() => {
+                    onRestaurantImagePress(item);
                   }}
                 >
-                  <Text
-                    onPress={() => {
-                      onRestaurantImagePress(item);
+                  <FontAwesome
+                    name="binoculars"
+                    style={{
+                      fontSize: moderateScale(20),
+                      color: colors.white,
                     }}
-                    style={commonStyles.textWhite(32, {
+                  />
+                  <Text
+                    style={commonStyles.textWhite(14, {
                       textShadowColor: colors.black,
                       textShadowOffset: { width: 5, height: 5 },
                       textShadowRadius: 10,
                       zIndex: 99,
                     })}
                   >
-                    {item.restaurantName}
+                    Explore
                   </Text>
-                  {item && item.restaurantRating
-                    ? helperFunctions.getStarRatings(item.restaurantRating)
-                    : null}
-                  {item && item.restaurantRating ? (
-                    <Text
-                      style={commonStyles.textWhite(28, {
-                        textShadowColor: colors.black,
-                        textShadowOffset: { width: 5, height: 5 },
-                        textShadowRadius: 10,
-                        zIndex: 99,
-                      })}
-                    >
-                      {item.restaurantRating}
-                    </Text>
-                  ) : null}
-                  {item &&
-                  item.restaurantPrice &&
-                  item.restaurantPrice != "" ? (
-                    <View style={styles.singleRatingContainer}>
-                      {ratingsData.map((innerItem, innerIndex) => {
-                        return (
-                          innerItem <=
-                            Math.floor(
-                              item && item.restaurantPrice
-                                ? item.restaurantPrice
-                                : 0
-                            ) && (
-                            <FontAwesome
-                              key={`dollar-${innerIndex}`}
-                              name="dollar"
-                              style={{
-                                fontSize: 25,
-                                color: "#007700",
-                                marginLeft:
-                                  innerIndex !== 0 ? moderateScale(3) : 0,
-                              }}
-                            />
-                          )
-                        );
-                      })}
-                    </View>
-                  ) : null}
-                </View>
-                <View
-                  style={{
-                    minHeight: moderateScale(100),
-                    minWidth: moderateScale(40),
-                    // padding: moderateScale(5),
-                    marginBottom: moderateScale(5),
-                    position: "absolute",
-                    // left: windowWidth * 0.6,
-                    right: moderateScale(0),
-                    bottom: windowHeight * 0.2,
-                    alignItems: "center",
-                  }}
-                >
-                  <TouchableOpacity
-                    style={{ alignItems: "center" }}
-                    onPress={() => {
-                      onRestaurantImagePress(item);
-                    }}
-                  >
-                    <FontAwesome
-                      name="binoculars"
-                      style={{
-                        fontSize: moderateScale(20),
-                        color: colors.white,
-                      }}
-                    />
-                    <Text
-                      style={commonStyles.textWhite(14, {
-                        textShadowColor: colors.black,
-                        textShadowOffset: { width: 5, height: 5 },
-                        textShadowRadius: 10,
-                        zIndex: 99,
-                      })}
-                    >
-                      Explore
-                    </Text>
-                  </TouchableOpacity>
-                  {item && (
-                    <View style={{ alignItems: "center" }}>
-                      {/* <PressableImage onImagePress={() => {
+                </TouchableOpacity>
+                {item && (
+                  <View style={{ alignItems: "center" }}>
+                    {/* <PressableImage onImagePress={() => {
                                 onLikeUnlikePostPress(item)
                             }} /> */}
-                      <TouchableOpacity
-                        onPress={() => {
-                          onLikeUnlikePostPress(item, isLiked);
-                        }}
-                      >
-                        <ImageBackground
-                          resizeMode="stretch"
-                          source={
-                            isLiked
-                              ? imagePath.likedPost
-                              : imagePath.unlikedPost
-                          }
-                          style={styles.likePostImage}
-                        >
-                          {/* <Ionicons name={isLiked ? 'checkmark' : 'add-circle'} style={{ fontSize: moderateScale(10), color: isLiked ? colors.green : colors.black, position: 'absolute', top: -moderateScale(4), right: -moderateScale(4) }} /> */}
-                        </ImageBackground>
-                      </TouchableOpacity>
-                      <View
-                        style={{ flexDirection: "row", alignItems: "center" }}
-                      >
-                        <Text
-                          style={commonStyles.textWhite(14, {
-                            textShadowColor: colors.black,
-                            textShadowOffset: { width: 5, height: 5 },
-                            textShadowRadius: 10,
-                            zIndex: 99,
-                          })}
-                        >
-                          {isLiked ? "Favorited" : "Favorite"}
-                        </Text>
-                      </View>
-                    </View>
-                  )}
-                  <View style={{ alignItems: "center" }}>
-                    <Entypo
-                      name="share"
-                      style={styles.shareIcon}
+                    <TouchableOpacity
                       onPress={() => {
-                        onShare(item);
+                        onLikeUnlikePostPress(item, isLiked);
                       }}
-                    />
-                    <Text
-                      style={commonStyles.textWhite(14, {
-                        textShadowColor: colors.black,
-                        textShadowOffset: { width: 5, height: 5 },
-                        textShadowRadius: 10,
-                        zIndex: 99,
-                      })}
                     >
-                      Share
-                    </Text>
+                      <ImageBackground
+                        resizeMode="stretch"
+                        source={
+                          isLiked ? imagePath.likedPost : imagePath.unlikedPost
+                        }
+                        style={styles.likePostImage}
+                      >
+                        {/* <Ionicons name={isLiked ? 'checkmark' : 'add-circle'} style={{ fontSize: moderateScale(10), color: isLiked ? colors.green : colors.black, position: 'absolute', top: -moderateScale(4), right: -moderateScale(4) }} /> */}
+                      </ImageBackground>
+                    </TouchableOpacity>
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                      <Text
+                        style={commonStyles.textWhite(14, {
+                          textShadowColor: colors.black,
+                          textShadowOffset: { width: 5, height: 5 },
+                          textShadowRadius: 10,
+                          zIndex: 99,
+                        })}
+                      >
+                        {isLiked ? "Favorited" : "Favorite"}
+                      </Text>
+                    </View>
                   </View>
+                )}
+                <View style={{ alignItems: "center" }}>
+                  <Entypo
+                    name="share"
+                    style={styles.shareIcon}
+                    onPress={() => {
+                      onShare(item);
+                    }}
+                  />
+                  <Text
+                    style={commonStyles.textWhite(14, {
+                      textShadowColor: colors.black,
+                      textShadowOffset: { width: 5, height: 5 },
+                      textShadowRadius: 10,
+                      zIndex: 99,
+                    })}
+                  >
+                    Share
+                  </Text>
                 </View>
               </View>
-            </PanGestureHandler>
-          </DoubleClick>
-        </ImageBackground>
-      )
+            </View>
+          </PanGestureHandler>
+        </DoubleClick>
+      </ImageBackground>
     );
   };
 
@@ -1359,8 +1884,8 @@ export default function SinglePostComponent({}) {
       const commentText = comment;
 
       setShowCommentModal(false);
-      setIsLoading(true);
-      setLoaderTitle("Posting your review");
+      const operationId = "postComment";
+      setLoadingState(true, "Posting your review", operationId);
 
       // Optimistic update - update Redux immediately (old project pattern)
       let objData = {
@@ -1376,7 +1901,7 @@ export default function SinglePostComponent({}) {
       dispatch(updatePost(objPayload));
       setComment("");
       setCustomToastMessage("Review posted successfully");
-      setIsLoading(false);
+      setLoadingState(false, "", operationId);
       setShowCustomToast(true);
 
       // Make API call in background (old project pattern)
@@ -1391,23 +1916,31 @@ export default function SinglePostComponent({}) {
         // If API succeeds, fetch fresh post data to get the actual comment from DB
         if (response && response.success) {
           // Fetch fresh post data to ensure we have the latest comments from DB
-          const freshPostResponse = await apiHandler.getPostById(postDetails.id);
-          if (freshPostResponse && freshPostResponse.success && freshPostResponse.post) {
-            const formattedComments = (freshPostResponse.post.comments || []).map((comment) => ({
+          const freshPostResponse = await apiHandler.getPostById(
+            postDetails.id
+          );
+          if (
+            freshPostResponse &&
+            freshPostResponse.success &&
+            freshPostResponse.post
+          ) {
+            const formattedComments = (
+              freshPostResponse.post.comments || []
+            ).map((comment) => ({
               ...comment,
               user: {
                 ...comment.user,
                 image: comment.user?.profile_picture || comment.user?.image,
               },
             }));
-            
+
             // Update postDetails with fresh data
             const updatedPost = {
               ...postDetails,
               comment: formattedComments,
             };
             setPostDetails(updatedPost);
-            
+
             // Update Redux state
             const updatedPosts = allPosts.map((item) => {
               if (item.id === postDetails.id && !item.isGoogle) {
@@ -1451,7 +1984,9 @@ export default function SinglePostComponent({}) {
       likedPosts.length > 0 &&
       likedPosts.some((likedPost) => {
         // Use loose equality to handle string/number mismatch
-        return item.id == likedPost.id || String(item.id) === String(likedPost.id);
+        return (
+          item.id == likedPost.id || String(item.id) === String(likedPost.id)
+        );
       });
     return (
       <View
@@ -1519,40 +2054,41 @@ export default function SinglePostComponent({}) {
                     {item && item.user && item.user.full_name}
                   </Text>
                 )}
-                {item &&
-                  item.rating &&
-                  helperFunctions.getStarRatings(item.rating)}
                 {item && item.rating && (
-                  <Text
-                    style={commonStyles.textWhite(28, {
-                      fontWeight: "400",
-                      color: colors.white,
-                      textShadowColor: colors.black,
-                      textShadowOffset: { width: 5, height: 5 },
-                      textShadowRadius: 10,
-                    })}
+                  <View
+                    style={{
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginVertical: moderateScale(8),
+                    }}
                   >
-                    {item && item.rating}
-                  </Text>
+                    <View
+                      style={{
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Text
+                        style={commonStyles.textWhite(40, {
+                          fontWeight: "700",
+                          color: colors.white,
+                          textShadowColor: colors.black,
+                          textShadowOffset: { width: 5, height: 5 },
+                          textShadowRadius: 10,
+                        })}
+                      >
+                        {item && item.rating}
+                      </Text>
+                      {helperFunctions.getStarRatings(item.rating, 24)}
+                    </View>
+                  </View>
                 )}
-                <Text
-                  style={commonStyles.textWhite(14, {
-                    fontWeight: "400",
-                    color: colors.white,
-                    textShadowColor: colors.black,
-                    textShadowOffset: { width: 5, height: 5 },
-                    textShadowRadius: 10,
-                  })}
-                >
-                  {item && item.name}
-                </Text>
                 <Text
                   numberOfLines={showExpandedReview ? 20 : 2}
                   onPress={expandContractReview}
                   style={commonStyles.textWhite(14, {
                     fontWeight: "400",
                     color: colors.white,
-                    marginBottom: moderateScale(100),
                     textShadowColor: colors.black,
                     textShadowOffset: { width: 5, height: 5 },
                     textShadowRadius: 10,
@@ -1650,8 +2186,8 @@ export default function SinglePostComponent({}) {
               {item &&
               item.file &&
               item.file.length > 0 &&
-              item.file[0] &&
-              item.file[0].type == "video" ? (
+              item.file[currentPostImageIndex] &&
+              item.file[currentPostImageIndex].type == "video" ? (
                 <View
                   style={{
                     position: "absolute",
@@ -1664,7 +2200,9 @@ export default function SinglePostComponent({}) {
                 >
                   <Video
                     source={{
-                      uri: POSTS_IMAGE_BASE_URL + item.file[0].filenames,
+                      uri:
+                        POSTS_IMAGE_BASE_URL +
+                        item.file[currentPostImageIndex].filenames,
                     }}
                     style={commonStyles.flexFull}
                     paused={!(currentPostIndex == index && isFocused)}
@@ -1677,13 +2215,32 @@ export default function SinglePostComponent({}) {
                 <Image
                   resizeMode="cover"
                   source={
-                    item.file && item.file.length > 0 && item.file[0].filenames
-                      ? { uri: POSTS_IMAGE_BASE_URL + item.file[0].filenames }
+                    item.file &&
+                    item.file.length > 0 &&
+                    item.file[currentPostImageIndex] &&
+                    item.file[currentPostImageIndex].filenames
+                      ? {
+                          uri:
+                            POSTS_IMAGE_BASE_URL +
+                            item.file[currentPostImageIndex].filenames,
+                        }
                       : imagePath.americanFoodImage
                   }
                   style={{ height: componentHeight, width: windowWidth }}
                 ></Image>
               )}
+              <View style={styles.sideTapContainer}>
+                <TouchableOpacity
+                  style={styles.leftTap}
+                  activeOpacity={1}
+                  onPress={() => onPostSideTap("left", item)}
+                />
+                <TouchableOpacity
+                  style={styles.rightTap}
+                  activeOpacity={1}
+                  onPress={() => onPostSideTap("right", item)}
+                />
+              </View>
             </View>
           </PanGestureHandler>
         </DoubleClick>
@@ -1806,7 +2363,22 @@ export default function SinglePostComponent({}) {
     );
   };
 
-  const listKeyExtractor = useCallback((item, index) => index.toString(), []);
+  const listKeyExtractor = useCallback((item, index) => {
+    // Use unique identifiers when available, fallback to index
+    if (item && item.restaurant_id) {
+      return `restaurant-${item.restaurant_id}-${index}`;
+    }
+    if (item && item.id) {
+      return `post-${item.id}-${index}`;
+    }
+    if (item && item.isGoogleAd) {
+      return `google-ad-${index}`;
+    }
+    if (item && item.isAdvertisement && item.id) {
+      return `ad-${item.id}-${index}`;
+    }
+    return `item-${index}`;
+  }, []);
 
   return (
     <View
@@ -1817,7 +2389,7 @@ export default function SinglePostComponent({}) {
     >
       {likingPost && (
         <View style={{ flex: 1, zIndex: 99 }}>
-          <Animated.View style={{ opacity: likeOpacity }}>
+          <Animated.View style={{ opacity: opacity }}>
             <FontAwesome
               name="heart"
               style={{
@@ -1834,7 +2406,7 @@ export default function SinglePostComponent({}) {
       )}
       {isPausingVideo && (
         <View style={{ flex: 1, zIndex: 99 }}>
-          <Animated.View style={{ opacity: playPauseOpacity }}>
+          <Animated.View style={{ opacity: playOpacity }}>
             <Ionicons
               name="pause-outline"
               style={{
@@ -1851,7 +2423,7 @@ export default function SinglePostComponent({}) {
       )}
       {isPlayingVideo && (
         <View style={{ flex: 1, zIndex: 99 }}>
-          <Animated.View style={{ opacity: playPauseOpacity }}>
+          <Animated.View style={{ opacity: playOpacity }}>
             <Ionicons
               name="play"
               style={{
@@ -1906,6 +2478,31 @@ export default function SinglePostComponent({}) {
             return null;
           }
 
+          if (!userLocation || !userLocation.latitude) {
+            return (
+              <View
+                style={{
+                  height: componentHeight,
+                  width: windowWidth,
+                  justifyContent: "center",
+                  alignItems: "center",
+                  backgroundColor: currentThemePrimaryColor,
+                  paddingHorizontal: moderateScale(20),
+                }}
+              >
+                <Ionicons name="location-outline" size={moderateScale(50)} color={colors.appPrimary} />
+                <Text style={commonStyles.textWhite(18, { color: currentThemeSecondaryColor, textAlign: 'center', marginTop: moderateScale(10) })}>
+                  Nearby restaurants require your location.
+                </Text>
+                <CommonButton 
+                  buttonTitle="Enable Location" 
+                  onButtonPress={requestLocation}
+                  buttonStyle={{ marginTop: moderateScale(20), width: windowWidth * 0.6 }}
+                />
+              </View>
+            );
+          }
+
           return (
             <View
               style={{
@@ -1957,10 +2554,28 @@ export default function SinglePostComponent({}) {
         removeClippedSubviews={true}
         onMomentumScrollEnd={(evt) => {
           let currentHeight = evt.nativeEvent.contentOffset.y;
-          let currentIndex = currentHeight / componentHeight;
+          let currentIndex = Math.round(currentHeight / componentHeight);
           setCurrentPostIndex(currentIndex);
+          setCurrentPostImageIndex(0);
           if (allPosts && allPosts.length > 0 && allPosts[currentIndex]) {
             setPostDetails(allPosts[currentIndex]);
+          }
+
+          const totalPosts = allPosts.length;
+          const remainingPosts = totalPosts - currentIndex - 1;
+          console.log(`📍 Scroll position: Index ${currentIndex} of ${totalPosts} (${remainingPosts} remaining)`);
+          
+          if (
+            totalPosts > 0 &&
+            remainingPosts <= 0 &&
+            !showLoadingMorePosts &&
+            lastLoadMoreLengthRef.current !== totalPosts
+          ) {
+            console.log("🚀 Reached end of list, loading more posts...");
+            lastLoadMoreLengthRef.current = totalPosts;
+            getNewPosts();
+          } else {
+            console.log("⏸️ Load more skipped - not at the end or already loading");
           }
 
           // Handle video playback state for all items (posts + ads)
@@ -2003,13 +2618,10 @@ export default function SinglePostComponent({}) {
             });
           }
         }}
-        onEndReached={() => {
-          getNewPosts();
-        }}
-        initialNumToRender={25}
-        windowSize={25}
-        updateCellsBatchingPeriod={50}
-        maxToRenderPerBatch={25}
+        initialNumToRender={3}
+        windowSize={5}
+        updateCellsBatchingPeriod={100}
+        maxToRenderPerBatch={3}
       />
       {showLoadingMorePosts && (
         <View
@@ -2488,5 +3100,24 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: moderateScale(8),
     padding: moderateScale(6),
     paddingRight: moderateScale(12),
+  },
+  sideTapContainer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: "row",
+    zIndex: 10,
+  },
+  leftTap: {
+    width: "30%",
+    height: "100%",
+  },
+  rightTap: {
+    width: "30%",
+    height: "100%",
+    position: "absolute",
+    right: 0,
   },
 });

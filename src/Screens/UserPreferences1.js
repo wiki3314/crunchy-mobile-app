@@ -103,7 +103,7 @@ export default function UserPreferences1(props) {
 
   function onSingleCategoryPress(category) {
     if (isVibrationEnabled) {
-      Vibration.vibrate([0, 50, 70, 100]);
+      Vibration.vibrate([0, 30]);
     }
     let arrSelectedCategories = [...selectedCategories];
     if (

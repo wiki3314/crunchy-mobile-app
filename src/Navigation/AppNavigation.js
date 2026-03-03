@@ -28,32 +28,83 @@ const AppNavigation = (props) => {
 
   const current_session_id = useSelector((state) => state.current_session_id);
 
+  // Location validation function
+  const validateLocation = (coordinates) => {
+    // Reject invalid coordinates
+    if (!coordinates || 
+        coordinates.latitude === 0 && coordinates.longitude === 0 ||
+        Math.abs(coordinates.latitude) > 90 ||
+        Math.abs(coordinates.longitude) > 180 ||
+        !coordinates.latitude ||
+        !coordinates.longitude) {
+      return false;
+    }
+    return true;
+  };
+
   useEffect(() => {
-    console.log(
-      "🔄 AppNavigation: accessToken changed:",
-      accessToken ? "✅ Token exists" : "❌ No token"
-    );
+    // Only log in development mode to reduce console noise
+    if (__DEV__) {
+      console.log(
+        "🔄 AppNavigation: accessToken changed:",
+        accessToken ? "✅ Token exists" : "❌ No token"
+      );
+    }
     getInitialData();
   }, [accessToken]);
 
   const getLocation = () => {
-    Geolocation.getCurrentPosition(
-      (info) => {
-        var coordinates = {
-          latitude: info.coords.latitude,
-          longitude: info.coords.longitude,
-        };
-        dispatch(setLocation(coordinates));
-      },
-      (err) => {
-        getLocation();
-      },
-      {
-        enableHighAccuracy: false,
-        timeout: 20000,
-        maximumAge: 3600000,
+    const tryGetLocation = async (useHighAccuracy = true) => {
+      // 1. Check for cached location first
+      const cachedLocation = await helperFunctions.getCachedLocation();
+      if (cachedLocation && validateLocation(cachedLocation)) {
+        console.log("📍 AppNavigation: Found cached location:", cachedLocation);
+        dispatch(setLocation(cachedLocation));
       }
-    );
+
+      console.log(`📍 AppNavigation: Attempting location fetch (HighAccuracy: ${useHighAccuracy})`);
+      
+      const timeoutId = setTimeout(() => {
+        console.log("⏰ AppNavigation: Location fetch timed out, trying low accuracy...");
+        if (useHighAccuracy) {
+          tryGetLocation(false);
+        }
+      }, 10000);
+
+      Geolocation.getCurrentPosition(
+        (info) => {
+          clearTimeout(timeoutId);
+          const coordinates = {
+            latitude: info.coords.latitude,
+            longitude: info.coords.longitude,
+          };
+          
+          if (validateLocation(coordinates)) {
+            console.log("📍 AppNavigation: Got fresh location:", coordinates);
+            dispatch(setLocation(coordinates));
+            helperFunctions.saveCachedLocation(coordinates);
+          } else {
+            console.warn("⚠️ AppNavigation: Invalid location received:", coordinates);
+            if (useHighAccuracy) tryGetLocation(false);
+          }
+        },
+        (err) => {
+          clearTimeout(timeoutId);
+          console.log("⚠️ AppNavigation: Location error:", err);
+          if (useHighAccuracy) {
+            console.log("🔄 AppNavigation: High accuracy failed, retrying with low accuracy...");
+            tryGetLocation(false);
+          }
+        },
+        {
+          enableHighAccuracy: useHighAccuracy,
+          timeout: 10000,
+          maximumAge: 0,
+        }
+      );
+    };
+    
+    tryGetLocation(true);
   };
 
   const requestLocationPermissions = async () => {
@@ -82,24 +133,32 @@ const AppNavigation = (props) => {
       getLocation();
     }
 
-    // TEMPORARILY DISABLED FOR DESIGN TESTING
-    // AppState.addEventListener('change', (val) => {
-    //     if (accessToken) {
-    //         if (val == 'active') {
-    //             let reqObj = {
-    //                 type: 'open',
-    //                 session_id: current_session_id
-    //             }
-    //             let data = apiHandler.userSessionAPI(accessToken, reqObj)
-    //         }
-    //         if (val == 'background') {
-    //             let reqObj = {
-    //                 type: 'close',
-    //             }
-    //             apiHandler.userSessionAPI(accessToken, reqObj)
-    //         }
-    //     }
-    // })
+    //  TEMPORARILY DISABLED FOR DESIGN TESTING
+    AppState.addEventListener("change", async (val) => {
+      if (accessToken) {
+        if (val == "active") {
+          try {
+            let reqObj = {
+              type: "open",
+              session_id: current_session_id,
+            };
+            await apiHandler.userSessionAPI(accessToken, reqObj);
+          } catch (error) {
+            console.error("❌ Error tracking session (open):", error.message);
+          }
+        }
+        if (val == "background") {
+          try {
+            let reqObj = {
+              type: "close",
+            };
+            await apiHandler.userSessionAPI(accessToken, reqObj);
+          } catch (error) {
+            console.error("❌ Error tracking session (close):", error.message);
+          }
+        }
+      }
+    });
 
     let currentTime = new Date().getHours();
     if (autoUpdateDarkMode) {

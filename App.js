@@ -50,7 +50,11 @@ const App = () => {
         return;
       }
 
-      console.log("🧭 Handling notification navigation:", { type, actor_user_id, post_id });
+      console.log("🧭 Handling notification navigation:", {
+        type,
+        actor_user_id,
+        post_id,
+      });
 
       if (type === "follow") {
         // Navigate to user profile who followed
@@ -59,7 +63,9 @@ const App = () => {
           if (actorId === userData.id) {
             navigation.navigate(navigationStrings.ProfileScreen);
           } else {
-            navigation.navigate(navigationStrings.ShowUser, { userID: actorId });
+            navigation.navigate(navigationStrings.ShowUser, {
+              userID: actorId,
+            });
           }
         } else {
           navigation.navigate(navigationStrings.Notifications);
@@ -71,7 +77,9 @@ const App = () => {
           if (actorId === userData.id) {
             navigation.navigate(navigationStrings.ProfileScreen);
           } else {
-            navigation.navigate(navigationStrings.ShowUser, { userID: actorId });
+            navigation.navigate(navigationStrings.ShowUser, {
+              userID: actorId,
+            });
           }
         } else {
           // Default: Navigate to Notifications screen
@@ -89,7 +97,9 @@ const App = () => {
   const onRemoteNotification = (notification) => {
     try {
       // Safely get notification data
-      const notificationData = notification.getData ? notification.getData() : notification.data || {};
+      const notificationData = notification.getData
+        ? notification.getData()
+        : notification.data || {};
       const isClicked = notificationData?.userInteraction === 1;
 
       if (isClicked) {
@@ -103,7 +113,7 @@ const App = () => {
         // Do something else with push notification
         console.log("📱 Notification received (not clicked)");
       }
-      
+
       // Use the appropriate result based on what you needed to do for this notification
       const result = PushNotificationIOS.FetchResult.NoData;
       if (notification.finish) {
@@ -149,7 +159,8 @@ const App = () => {
               {
                 channelId: "channel-id", // (required)
                 channelName: "My channel", // (required)
-                channelDescription: "A channel to categorise your notifications", // (optional) default: undefined.
+                channelDescription:
+                  "A channel to categorise your notifications", // (optional) default: undefined.
                 playSound: true, // (optional) default: true
                 soundName: "default", // (optional) See `soundName` parameter of `localNotification` function
                 vibrate: true, // (optional) default: true. Creates the default vibration pattern if true.
@@ -184,7 +195,10 @@ const App = () => {
 
       // Handle notification when app is opened from background
       messaging().onNotificationOpenedApp((remoteMessage) => {
-        console.log("📱 Notification opened app from background:", remoteMessage);
+        console.log(
+          "📱 Notification opened app from background:",
+          remoteMessage
+        );
         if (remoteMessage.data) {
           console.log("📱 Notification data:", remoteMessage.data);
           // Small delay to ensure navigation is ready
@@ -199,7 +213,10 @@ const App = () => {
         .getInitialNotification()
         .then((remoteMessage) => {
           if (remoteMessage) {
-            console.log("📱 Notification opened app from quit state:", remoteMessage);
+            console.log(
+              "📱 Notification opened app from quit state:",
+              remoteMessage
+            );
             if (remoteMessage.data) {
               console.log("📱 Notification data:", remoteMessage.data);
               // Longer delay for quit state to ensure app is fully initialized

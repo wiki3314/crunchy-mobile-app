@@ -7,7 +7,6 @@ import Login from "../Screens/Login";
 import Registration from "../Screens/Registrations";
 import ForgotPassword from "../Screens/ForgotPassword";
 import { createStackNavigator } from "@react-navigation/stack";
-import LandingScreen from "../Screens/LandingScreen";
 import HomeWithoutLogin from "../Screens/HomeWithoutLogin";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import Foundation from "react-native-vector-icons/Foundation";
@@ -20,6 +19,9 @@ import { showHideForceLoginModal } from "../Redux/actions/actions";
 import AppLaunchedFromLink from "../Screens/AppLaunchedFromLink";
 import ViewRestaurant from "../Screens/ViewRestaurant";
 import TermsAndConditions from "../Screens/TermsAndConditions";
+import Search from "../Screens/Search";
+import ProfileScreen from "../Screens/ProfileScreen";
+import { useNavigation } from "@react-navigation/native";
 
 const AuthStack = createStackNavigator();
 const WithoutLoginBottomNavigation = createBottomTabNavigator();
@@ -38,6 +40,7 @@ const AuthBottomNavigation = () => {
   );
 
   const dispatch = useDispatch();
+  const navigation = useNavigation();
 
   const changeModalState = () => {
     dispatch(showHideForceLoginModal(true));
@@ -92,7 +95,10 @@ const AuthBottomNavigation = () => {
   function SearchTab(props) {
     return (
       <Pressable
-        onPress={changeModalState}
+        onPress={() => {
+          // Navigate to Search screen instead of showing login modal
+          navigation.navigate(navigationStrings.SearchScreen);
+        }}
         style={[styles.tabItem, { backgroundColor: currentThemePrimaryColor }]}
       >
         <Ionicons
@@ -223,7 +229,7 @@ const AuthBottomNavigation = () => {
       />
       <WithoutLoginBottomNavigation.Screen
         name={navigationStrings.SearchScreen}
-        component={HomeWithoutLogin}
+        component={Search}
       />
       <WithoutLoginBottomNavigation.Screen
         name={navigationStrings.AddPost}
@@ -235,7 +241,7 @@ const AuthBottomNavigation = () => {
       />
       <WithoutLoginBottomNavigation.Screen
         name={navigationStrings.ProfileScreen}
-        component={HomeWithoutLogin}
+        component={ProfileScreen}
       />
     </WithoutLoginBottomNavigation.Navigator>
   );
@@ -260,10 +266,6 @@ export const AuthorizationStack = () => {
         component={SplashScreen}
       />
       <AuthStack.Screen
-        name={navigationStrings.LandingScreen}
-        component={LandingScreen}
-      />
-      <AuthStack.Screen
         name={navigationStrings.AuthBottomNavigation}
         component={AuthBottomNavigation}
       />
@@ -279,6 +281,14 @@ export const AuthorizationStack = () => {
       <AuthStack.Screen
         name={navigationStrings.TermsAndConditionsScreen}
         component={TermsAndConditions}
+      />
+      <AuthStack.Screen
+        name={navigationStrings.SearchScreen}
+        component={Search}
+      />
+      <AuthStack.Screen
+        name={navigationStrings.ProfileScreen}
+        component={ProfileScreen}
       />
     </AuthStack.Navigator>
   );
@@ -299,7 +309,7 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     alignItems: "center",
     zIndex: -1,
-    backgroundColor: colors.white,
+    backgroundColor: 'transparent',
   },
   tabCircle: {
     width: 50,

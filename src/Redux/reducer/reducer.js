@@ -5,10 +5,7 @@ import { actionTypes } from "../actions/actionTypes";
 export const initialState = {
   accessToken: "",
   userData: [],
-  userLocation: {
-    latitude: 55.9429035,
-    longitude: 12.2943663,
-  },
+  userLocation: null,
   foodCategories: [],
   allPosts: [],
   postsWithoutLogin: [],
@@ -19,7 +16,7 @@ export const initialState = {
     isGoogle: false,
     id: "",
   },
-  loadNewPosts: true,
+  loadNewPosts: false,
   loadRandomPosts: false,
   savedFoodCategories: [],
   postsRadius: 20,
@@ -49,7 +46,19 @@ const reducer = (state = initialState, action) => {
       objState.userData = action.payload;
       return objState;
     case actionTypes.SET_USER_LOCATION:
-      objState.userLocation = action.payload;
+      // Only set location if it's a valid coordinate object or null
+      // Allow null to clear location, but validate coordinate objects
+      if (action.payload === null) {
+        objState.userLocation = null;
+      } else if (
+        action.payload &&
+        typeof action.payload.latitude === "number" &&
+        typeof action.payload.longitude === "number" &&
+        Math.abs(action.payload.latitude) <= 90 &&
+        Math.abs(action.payload.longitude) <= 180
+      ) {
+        objState.userLocation = action.payload;
+      }
       return objState;
     case actionTypes.SET_ALL_POSTS:
       let postsInPayload = action.payload;

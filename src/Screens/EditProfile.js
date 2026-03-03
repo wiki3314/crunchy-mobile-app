@@ -202,6 +202,7 @@ export default function EditProfile(props) {
     };
     apiHandler.userSessionAPI(accessToken, reqObj);
     await helperFunctions.clearAccessToken();
+    await helperFunctions.clearCachedPosts(); // Clear cached posts on logout
     setIsLoading(false);
     dispatch(logoutUser());
   }

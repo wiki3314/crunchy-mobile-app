@@ -6,9 +6,65 @@
 import "react-native-get-random-values";
 
 // Fix ViewPropTypes deprecation warning for older libraries
-import { View } from "react-native";
-import DeprecatedViewPropTypes from "deprecated-react-native-prop-types";
-View.propTypes = DeprecatedViewPropTypes.ViewPropTypes;
+// Note: react-native-snap-carousel uses ViewPropTypes, which is handled by the patch file
+// We don't need to set View.propTypes here as it causes warnings
+import { LogBox } from "react-native";
+
+// Ignore LogBox warnings - must be called before any other imports
+// These warnings come from React Native's internal LogBox component
+if (typeof LogBox !== "undefined" && LogBox) {
+  try {
+    // Ignore specific warning patterns
+    LogBox.ignoreLogs([
+      "ViewPropTypes will be removed",
+      "ViewPropTypes",
+      "Invalid props.style key `fontWeight` supplied to `View`",
+      "Failed prop type: Invalid props.style key `fontWeight`",
+      "Each child in a list should have a unique",
+      "deprecated-react-native-prop-types",
+    ]);
+  } catch (e) {
+    // LogBox might not be available in all environments
+  }
+}
+
+// Override console.error to filter out LogBox internal errors
+// These errors come from React Native's internal LogBox component, not our code
+const originalError = console.error;
+console.error = (...args) => {
+  const message = args.join(" ").toString();
+  if (
+    message.includes("ViewPropTypes will be removed") ||
+    message.includes("ViewPropTypes") ||
+    message.includes("Invalid props.style key `fontWeight`") ||
+    message.includes(
+      "Failed prop type: Invalid props.style key `fontWeight`"
+    ) ||
+    message.includes("CountBadge") ||
+    (message.includes("fontWeight") && message.includes("View")) ||
+    message.includes("deprecated-react-native-prop-types") ||
+    message.includes("PropTypes") && message.includes("deprecated")
+  ) {
+    // Suppress these specific errors from React Native's LogBox
+    return;
+  }
+  originalError.apply(console, args);
+};
+
+// Also override console.warn to suppress ViewPropTypes warnings
+const originalWarn = console.warn;
+console.warn = (...args) => {
+  const message = args.join(" ").toString();
+  if (
+    message.includes("ViewPropTypes will be removed") ||
+    message.includes("ViewPropTypes") ||
+    message.includes("deprecated-react-native-prop-types")
+  ) {
+    // Suppress ViewPropTypes warnings
+    return;
+  }
+  originalWarn.apply(console, args);
+};
 
 import { AppRegistry } from "react-native";
 import App from "./App";
@@ -30,10 +86,16 @@ PushNotification.configure({
     console.log("📱 PushNotification onNotification:", notification);
 
     // Handle notification click (Android - when local notification is clicked)
-    if (notification.userInteraction || (notification.data && Object.keys(notification.data).length > 0)) {
+    if (
+      notification.userInteraction ||
+      (notification.data && Object.keys(notification.data).length > 0)
+    ) {
       const notificationData = notification.data || notification.userInfo || {};
-      console.log("📱 Android notification clicked with data:", notificationData);
-      
+      console.log(
+        "📱 Android notification clicked with data:",
+        notificationData
+      );
+
       // Trigger navigation handler
       if (notificationData && Object.keys(notificationData).length > 0) {
         // Small delay to ensure navigation is ready

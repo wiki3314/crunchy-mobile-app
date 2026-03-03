@@ -50,6 +50,8 @@ import Fontisto from "react-native-vector-icons/Fontisto";
 import { helperFunctions } from "../Constants/helperFunctions";
 import ConfirmationModal from "../Components/ConfirmationModal";
 import DeletePostModal from "../Components/DeletePostModal";
+import CommonButton from "../Components/CommonButton";
+import { showHideForceLoginModal } from "../Redux/actions/actions";
 
 export default function ProfileScreen(props) {
   const navigation = useNavigation();
@@ -745,7 +747,7 @@ export default function ProfileScreen(props) {
                 color: currentThemeSecondaryColor,
               })}
             >
-              {item.follows?.full_name || 'Unknown User'}
+              {item.follows?.full_name || "Unknown User"}
             </Text>
           </View>
         </View>
@@ -791,7 +793,7 @@ export default function ProfileScreen(props) {
                 color: currentThemeSecondaryColor,
               })}
             >
-              {item.following?.full_name || 'Unknown User'}
+              {item.following?.full_name || "Unknown User"}
             </Text>
           </View>
         </View>
@@ -800,6 +802,11 @@ export default function ProfileScreen(props) {
   };
 
   const getUserDetails = async () => {
+    // Check if user is logged in
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     setLoaderTitle("Fetching your profile data");
     let userData = await apiHandler.getUserData(token);
@@ -1001,10 +1008,10 @@ export default function ProfileScreen(props) {
     setIsLoading(true);
     setLoaderTitle("Updating bio");
     let reqObj = {
-      full_name: userDetails?.full_name || '',
-      email: userDetails?.email || '',
-      password: userDetails?.password || '',
-      password_confirmation: userDetails?.password || '',
+      full_name: userDetails?.full_name || "",
+      email: userDetails?.email || "",
+      password: userDetails?.password || "",
+      password_confirmation: userDetails?.password || "",
       bio: userBio,
     };
     let response = await apiHandler.updateUserProfile(reqObj, token);
@@ -1142,6 +1149,50 @@ export default function ProfileScreen(props) {
             toastMessage={errorMessage}
           />
           {isLoading && <LoadingComponent title={loaderTitle} />}
+          {!token ? (
+            // Not logged in - show empty state
+            <View
+              style={{
+                flex: 1,
+                justifyContent: "center",
+                alignItems: "center",
+                padding: moderateScale(20),
+                minHeight: windowHeight * 0.7,
+              }}
+            >
+              <Text
+                style={commonStyles.textWhite(24, {
+                  color: currentThemeSecondaryColor,
+                  marginBottom: moderateScale(20),
+                  textAlign: "center",
+                  fontWeight: "bold",
+                })}
+              >
+                My Profile
+              </Text>
+              <Text
+                style={commonStyles.textWhite(16, {
+                  color: currentThemeSecondaryColor,
+                  marginBottom: moderateScale(30),
+                  textAlign: "center",
+                })}
+              >
+                Please login to view your profile
+              </Text>
+              <CommonButton
+                buttonStyle={{
+                  backgroundColor: colors.appPrimary,
+                  padding: moderateScale(15),
+                  borderRadius: moderateScale(8),
+                  minWidth: moderateScale(150),
+                }}
+                onButtonPress={() => dispatch(showHideForceLoginModal(true))}
+                buttonTitle="Login"
+                textStyle={commonStyles.textWhite(18)}
+              />
+            </View>
+          ) : (
+            <>
           <ImageBackground
             resizeMode="stretch"
             source={
@@ -1393,6 +1444,8 @@ export default function ProfileScreen(props) {
               icons={[renderRestaurantsIcon, renderPostsIcon]}
             />
           </View>
+            </>
+          )}
         </View>
         <Modal
           transparent={true}
@@ -1438,8 +1491,8 @@ export default function ProfileScreen(props) {
                 })}
               >
                 {showFollowers
-                  ? `${userDetails?.full_name || 'User'} followers`
-                  : `${userDetails?.full_name || 'User'} follows`}
+                  ? `${userDetails?.full_name || "User"} followers`
+                  : `${userDetails?.full_name || "User"} follows`}
               </Text>
               <View style={commonStyles.flexFull}>
                 {showFollowers ? (

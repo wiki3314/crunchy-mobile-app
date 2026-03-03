@@ -13,6 +13,7 @@ import {
   Vibration,
   View,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import CommonButton from "../Components/CommonButton";
 import { colors } from "../Constants/colors";
 import { commonStyles } from "../Constants/commonStyles";
@@ -47,13 +48,13 @@ import {
   setSearchingForQuickBites,
   setUserData,
   updateFoodCategories,
+  showHideForceLoginModal,
 } from "../Redux/actions/actions";
 import { navigationStrings } from "../Navigation/NavigationStrings";
 import { useEffect } from "react";
 import { ScrollView } from "react-native-gesture-handler";
 import FontAwesome from "react-native-vector-icons/FontAwesome";
 import { helperFunctions } from "../Constants/helperFunctions";
-import CustomToast from "../Components/CustomToast";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import { imagePath } from "../Constants/imagePath";
 import AppIntroSlider from "react-native-app-intro-slider";
@@ -101,7 +102,6 @@ export default function Search(props) {
   const [displayedFoodCategories, setDisplayedFoodCategories] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loaderTitle, setLoaderTitle] = useState("");
-  const [showCustomToast, setShowCustomToast] = useState(false);
   const [selectedRestaurant, setSelectedRestaurant] = useState("");
   const [selectedRestaurantID, setSelectedRestaurantID] = useState("");
   const [showRestaurantSearch, setShowRestaurantSearch] = useState(false);
@@ -132,10 +132,44 @@ export default function Search(props) {
     setIsLoadRandomPosts(loadRandomPosts);
   }, [isFocused, loadRandomPosts]);
 
+  // Hide loader when screen loses focus to prevent loader from showing after navigation
+  useEffect(() => {
+    if (!isFocused && isLoading) {
+      setIsLoading(false);
+    }
+  }, [isFocused, isLoading]);
+
   const getSavedCategories = async () => {
     setIsLoading(true);
     setLoaderTitle("Fetching saved preferences");
     try {
+      // If categories are not loaded in Redux, fetch them from API
+      if (
+        !foodCategories ||
+        !Array.isArray(foodCategories) ||
+        foodCategories.length === 0
+      ) {
+        console.log("📊 Categories not in Redux, fetching from API...");
+        let categories = await apiHandler.getAllCategories(accessToken);
+        if (categories && categories.length > 0) {
+          dispatch(setFoodCategories(categories));
+          // Limit to 12 broad categories as requested
+          let condensedCategories = categories.slice(0, 12);
+          let displayedData = helperFunctions.transformArray(condensedCategories);
+          setDisplayedFoodCategories(displayedData);
+          console.log("✅ Categories fetched and loaded:", categories.length);
+        } else {
+          console.log("⚠️ No categories found");
+          setDisplayedFoodCategories([]);
+        }
+      } else {
+        // Categories already in Redux, use them
+        // Limit to 12 broad categories as requested
+        let condensedCategories = foodCategories.slice(0, 12);
+        let displayedData = helperFunctions.transformArray(condensedCategories);
+        setDisplayedFoodCategories(displayedData);
+      }
+
       if (
         userData &&
         userData.search_randomly &&
@@ -144,26 +178,31 @@ export default function Search(props) {
         dispatch(setLoadRandomPosts(true));
         setIsLoadRandomPosts(true);
       }
-      // Check if foodCategories is valid before transforming
-      if (
-        foodCategories &&
-        Array.isArray(foodCategories) &&
-        foodCategories.length > 0
-      ) {
-        let displayedData = helperFunctions.transformArray(foodCategories);
-        setDisplayedFoodCategories(displayedData);
-      } else {
-        console.log("Food categories not loaded yet");
-        setDisplayedFoodCategories([]);
-      }
 
-      // Check if userData and radius are valid
-      if (userData && userData.radius) {
-        const radius = parseInt(userData.radius);
-        if (!isNaN(radius)) {
-          setDistance(radius);
-          dispatch(savePostsRadius(radius));
+      // Load radius from Redux (already loaded by SplashScreen) or from user settings
+      if (savedPostsRadius && !isNaN(Number(savedPostsRadius)) && Number(savedPostsRadius) > 0) {
+        // Use radius from Redux (already in miles)
+        setDistance(Number(savedPostsRadius));
+      } else if (userData?.user_settings?.search_radius) {
+        // Load from user_settings (backend stores in km, convert to miles)
+        const radiusInKm = parseFloat(userData.user_settings.search_radius);
+        if (!isNaN(radiusInKm)) {
+          const radiusInMiles = Math.round(radiusInKm * 0.621371);
+          setDistance(radiusInMiles);
+          dispatch(savePostsRadius(radiusInMiles));
         }
+      } else if (userData && userData.radius) {
+        // Legacy field fallback
+        const radius = parseInt(userData.radius);
+        if (!isNaN(radius) && radius > 0) {
+          const roundedRadius = Math.round(radius);
+          setDistance(roundedRadius);
+          dispatch(savePostsRadius(roundedRadius));
+        }
+      } else {
+        // Default to 20 miles
+        setDistance(20);
+        dispatch(savePostsRadius(20));
       }
 
       if (userData && userData.settings && userData.settings.length > 0) {
@@ -200,6 +239,31 @@ export default function Search(props) {
   };
 
   async function onSavePress() {
+    // For Guest Users: save radius locally
+    if (!accessToken) {
+      if (distance == 0) {
+        setShowErrorMessage(true);
+        setErrorMessage("Distance must be greater than 0");
+        if (isVibrationEnabled) {
+          Vibration.vibrate(errorVibrationPattern);
+        }
+        return;
+      }
+      
+      try {
+        await AsyncStorage.setItem("guestRadius", distance.toString());
+        dispatch(savePostsRadius(distance));
+        dispatch(setLoadNewPosts(true));
+        if (isVibrationEnabled) {
+          Vibration.vibrate(searchVibrationPattern);
+        }
+        navigation.navigate(navigationStrings.HomeScreen);
+      } catch (error) {
+        console.error("Error saving guest radius:", error);
+      }
+      return;
+    }
+
     if (distance == 0) {
       setShowErrorMessage(true);
       setErrorMessage("Distance must be greater than 0");
@@ -219,22 +283,30 @@ export default function Search(props) {
       });
       setIsLoading(true);
       setLoaderTitle("Updating preferences");
+      // Convert miles to km for backend (backend stores in km)
+      const radiusInKm = distance * 1.60934;
       let reqObj = {
         category_id: arrSelectedCategories,
-        radius: distance,
+        radius: radiusInKm, // Backend expects km
+        search_radius: radiusInKm, // Use new field name for consistency
         search_randomly: isLoadRandomPosts ? 1 : 0,
       };
       try {
         await apiHandler.saveUserPreference(reqObj, accessToken);
+        // Store in Redux in miles (frontend uses miles)
         dispatch(savePostsRadius(distance));
         dispatch(updateFoodCategories(selectedCategories));
+        // Hide loader immediately after successful API call
         setIsLoading(false);
-        setShowCustomToast(true);
+        // Toast message removed - navigate directly
         dispatch(setLoadNewPosts(true));
         if (isVibrationEnabled) {
           Vibration.vibrate(searchVibrationPattern);
         }
+        // Navigate directly to HomeScreen without showing toast
+        navigation.navigate(navigationStrings.HomeScreen);
       } catch (error) {
+        // Hide loader on error as well
         setIsLoading(false);
         alert(error.message);
       }
@@ -243,7 +315,7 @@ export default function Search(props) {
 
   function onSingleCategoryPress(category) {
     if (isVibrationEnabled) {
-      Vibration.vibrate([0, 50, 70, 100]);
+      Vibration.vibrate([0, 30]);
     }
     let arrSelectedCategories = [...selectedCategories];
     if (
@@ -408,17 +480,10 @@ export default function Search(props) {
         >
           {distance}
         </Text>
-        {distance == 0 ? (
-          <FontAwesome
-            name="bullseye"
-            style={styles.singlePinContainer(currentThemeSecondaryColor)}
-          />
-        ) : (
-          <Ionicons
-            name={"pin"}
-            style={styles.singlePinContainer(currentThemeSecondaryColor)}
-          />
-        )}
+        <MaterialCommunityIcons
+          name="target"
+          style={styles.singlePinContainer(currentThemeSecondaryColor)}
+        />
       </View>
     );
   };
@@ -442,6 +507,12 @@ export default function Search(props) {
   const onUserSearch = async (val) => {
     setSearchedName(val);
     if (val && val.trim().length > 0) {
+      // Check if user is logged in for user search
+      if (!accessToken) {
+        dispatch(showHideForceLoginModal(true));
+        setSearchedUsers([]);
+        return;
+      }
       console.log("[Search] Initiating user search for:", val);
       setIsSearchingForUsers(true);
       try {
@@ -601,7 +672,8 @@ export default function Search(props) {
                   setSelectedRestaurant(data.structured_formatting.main_text);
                   setSelectedRestaurantID(data.place_id);
                 }, 100);
-                navigation.navigate(navigationStrings.RestaurantDetails, {
+                // Use ViewRestaurant which is available in both AuthStack and MainStack
+                navigation.navigate(navigationStrings.ViewRestaurant, {
                   restaurant_id: data.place_id,
                 });
               } else {
@@ -715,7 +787,7 @@ export default function Search(props) {
               color: currentThemeSecondaryColor,
             }}
             value={searchedName}
-            placeholder={"Search Crunch partners"}
+            placeholder={"Search partners"}
             placeholderTextColor={
               isDarkModeActive ? colors.lightGrey : colors.darkGrey
             }
@@ -1003,16 +1075,6 @@ export default function Search(props) {
           </View>
         </View>
       </Modal>
-      <CustomToast
-        isVisible={showCustomToast}
-        onToastShow={() => {
-          setTimeout(() => {
-            setShowCustomToast(false);
-            navigation.navigate(navigationStrings.HomeScreen);
-          }, 900);
-        }}
-        toastMessage={"New preferences updated successfully"}
-      />
       <ErrorComponent
         isVisible={showErrorMessage}
         onToastShow={() => {
@@ -1027,7 +1089,49 @@ export default function Search(props) {
         <ScrollView showsVerticalScrollIndicator={false}>
           <View style={styles.titleFullContainer}>
             <View style={styles.titleInnerContainer}>
-              {userData.full_name.length <= 6 ? (
+              {userData && userData.full_name ? (
+                userData.full_name.length <= 6 ? (
+                  <Text
+                    style={commonStyles.textWhite(28, {
+                      color: currentThemeSecondaryColor,
+                      alignSelf: "center",
+                      fontWeight: "700",
+                      flexWrap: "wrap",
+                      textAlign: "center",
+                      marginLeft: moderateScale(14),
+                    })}
+                  >
+                    Welcome, {userData.full_name} !
+                  </Text>
+                ) : (
+                  <View style={{ alignSelf: "center", alignItems: "center" }}>
+                    <Text
+                      style={commonStyles.textWhite(28, {
+                        color: currentThemeSecondaryColor,
+                        alignSelf: "center",
+                        fontWeight: "700",
+                        flexWrap: "wrap",
+                        textAlign: "center",
+                        marginLeft: moderateScale(14),
+                      })}
+                    >
+                      Welcome,
+                    </Text>
+                    <Text
+                      style={commonStyles.textWhite(28, {
+                        color: currentThemeSecondaryColor,
+                        alignSelf: "center",
+                        fontWeight: "700",
+                        flexWrap: "wrap",
+                        textAlign: "center",
+                        marginLeft: moderateScale(14),
+                      })}
+                    >
+                      {userData.full_name} !
+                    </Text>
+                  </View>
+                )
+              ) : (
                 <Text
                   style={commonStyles.textWhite(28, {
                     color: currentThemeSecondaryColor,
@@ -1038,35 +1142,8 @@ export default function Search(props) {
                     marginLeft: moderateScale(14),
                   })}
                 >
-                  Welcome, {userData.full_name} !
+                  Search Restaurants
                 </Text>
-              ) : (
-                <View style={{ alignSelf: "center", alignItems: "center" }}>
-                  <Text
-                    style={commonStyles.textWhite(28, {
-                      color: currentThemeSecondaryColor,
-                      alignSelf: "center",
-                      fontWeight: "700",
-                      flexWrap: "wrap",
-                      textAlign: "center",
-                      marginLeft: moderateScale(14),
-                    })}
-                  >
-                    Welcome,
-                  </Text>
-                  <Text
-                    style={commonStyles.textWhite(28, {
-                      color: currentThemeSecondaryColor,
-                      alignSelf: "center",
-                      fontWeight: "700",
-                      flexWrap: "wrap",
-                      textAlign: "center",
-                      marginLeft: moderateScale(14),
-                    })}
-                  >
-                    {userData.full_name} !
-                  </Text>
-                </View>
               )}
               <Text
                 style={commonStyles.textWhite(20, {
@@ -1091,12 +1168,17 @@ export default function Search(props) {
               {renderLimitingDistance(50)}
             </View>
             <Slider
-              value={distance}
+              value={!isNaN(Number(distance)) ? Number(distance) : 20}
               onValueChange={(value) => {
                 if (value > 0) {
                   setDistance(value);
-                  if (isVibrationEnabled) {
-                    Vibration.vibrate(50, true);
+                }
+              }}
+              onSlidingComplete={async (value) => {
+                if (value > 0) {
+                  dispatch(savePostsRadius(value));
+                  if (!accessToken) {
+                    await AsyncStorage.setItem("guestRadius", value.toString());
                   }
                 }
               }}
@@ -1119,7 +1201,7 @@ export default function Search(props) {
                 alignSelf: "center",
               })}
             >
-              {distance + " "}
+              {Math.round(distance) + " "}
               miles
             </Text>
           </View>

@@ -8,6 +8,8 @@ import {
   View,
   Vibration,
   PermissionsAndroid,
+  Alert,
+  Linking,
 } from "react-native";
 import { useSelector, useDispatch } from "react-redux";
 import CommonButton from "../Components/CommonButton";
@@ -54,23 +56,89 @@ export default function LandingScreen(props) {
   ];
 
   const getLocation = () => {
-    Geolocation.getCurrentPosition(
-      (info) => {
-        var coordinates = {
-          latitude: info.coords.latitude,
-          longitude: info.coords.longitude,
-        };
-        dispatch(setLocation(coordinates));
-      },
-      (err) => {
-        console.log("Error is", err);
-      },
-      {
-        enableHighAccuracy: false,
-        timeout: 2000,
-        maximumAge: 3600000,
+    const tryGetLocation = async (useHighAccuracy = true) => {
+      // 1. Check for cached location first
+      const cachedLocation = await helperFunctions.getCachedLocation();
+      if (cachedLocation) {
+        console.log("📍 LandingScreen: Found cached location:", cachedLocation);
+        dispatch(setLocation(cachedLocation));
+        // Still try to get fresh location but maybe non-blocking? 
+        // For now, if cache exists, we consider it a success for initial view.
       }
-    );
+
+      console.log(`📍 LandingScreen: Attempting location fetch (HighAccuracy: ${useHighAccuracy})`);
+      
+      const timeoutId = setTimeout(() => {
+        console.log("⏰ LandingScreen: Location fetch timed out, trying low accuracy...");
+        if (useHighAccuracy) {
+          tryGetLocation(false);
+        } else {
+          showLocationErrorAlert("We couldn't fetch your location. Please check your GPS settings and try again.", () => tryGetLocation(true));
+        }
+      }, 10000);
+
+      Geolocation.getCurrentPosition(
+        (info) => {
+          clearTimeout(timeoutId);
+          const coordinates = {
+            latitude: info.coords.latitude,
+            longitude: info.coords.longitude,
+          };
+          console.log("📍 LandingScreen: Got fresh location:", coordinates);
+          dispatch(setLocation(coordinates));
+          helperFunctions.saveCachedLocation(coordinates);
+        },
+        (err) => {
+          clearTimeout(timeoutId);
+          console.log("⚠️ LandingScreen: Location error:", err);
+          if (useHighAccuracy) {
+            console.log("🔄 LandingScreen: High accuracy failed, retrying with low accuracy...");
+            tryGetLocation(false);
+          } else {
+            // Only show error if no cached location exists
+            if (!cachedLocation) {
+              if (err.code === 1) {
+                showPermissionDeniedAlert(() => tryGetLocation(true));
+              } else {
+                showLocationErrorAlert("We couldn't fetch your location. Try again?", () => tryGetLocation(true));
+              }
+            } else {
+              console.log("⏸️ LandingScreen: GPS failed but using cached location.");
+            }
+          }
+        },
+        {
+          enableHighAccuracy: useHighAccuracy,
+          timeout: 10000,
+          maximumAge: 0,
+        }
+      );
+    };
+
+    const showPermissionDeniedAlert = (retryFn) => {
+      Alert.alert(
+        "Location Required",
+        "Nearby restaurants require location permission. Please enable it in settings to continue.",
+        [
+          { text: "Retry", onPress: () => retryFn() },
+          { text: "Open Settings", onPress: () => Linking.openSettings() },
+        ],
+        { cancelable: false }
+      );
+    };
+
+    const showLocationErrorAlert = (message, retryFn) => {
+      Alert.alert(
+        "Location Error",
+        message,
+        [
+          { text: "Retry", onPress: () => retryFn() },
+        ],
+        { cancelable: false }
+      );
+    };
+    
+    tryGetLocation(true);
   };
 
   const requestLocationPermissions = async () => {

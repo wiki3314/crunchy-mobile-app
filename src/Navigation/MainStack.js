@@ -7,11 +7,9 @@ import SimpleLineIcons from "react-native-vector-icons/SimpleLineIcons";
 import Entypo from "react-native-vector-icons/Entypo";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import { navigationStrings } from "./NavigationStrings";
-import LandingScreen from "../Screens/LandingScreen";
+import Foundation from "react-native-vector-icons/Foundation";
 import { colors } from "../Constants/colors";
 import { commonStyles } from "../Constants/commonStyles";
-// import { ColorSpace } from 'react-native-reanimated';
-import Foundation from "react-native-vector-icons/Foundation";
 import { moderateScale, windowWidth } from "../Constants/globalConstants";
 import Search from "../Screens/Search";
 import Notifications from "../Screens/Notifications";
@@ -323,7 +321,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     // paddingTop: moderateScale(3),
     alignItems: "center",
-    backgroundColor: colors.white,
     zIndex: -1,
   },
   tabCircle: {

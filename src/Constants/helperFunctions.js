@@ -16,6 +16,81 @@ export const helperFunctions = {
   clearAccessToken: async () => {
     await AsyncStorage.removeItem("token");
   },
+  saveCachedPosts: async (posts, cacheKey = "cachedPosts", maxItems = 10, nextPageToken = null) => {
+    try {
+      if (!Array.isArray(posts)) {
+        console.warn("⚠️ Invalid posts data for caching");
+        return;
+      }
+
+      const cleanedPosts = posts.filter((item) => item && !item.isAdvertisement && !item.isGoogleAd);
+      const toCache = maxItems ? cleanedPosts.slice(0, maxItems) : cleanedPosts;
+
+      const cacheData = {
+        posts: toCache,
+        nextPageToken: nextPageToken,
+        timestamp: Date.now(),
+      };
+
+      await AsyncStorage.setItem(cacheKey, JSON.stringify(cacheData));
+      console.log(`✅ Cached posts saved: key=${cacheKey}, count=${toCache.length}, hasNextPage=${!!nextPageToken}`);
+    } catch (error) {
+      console.error("❌ Error saving cached posts:", error);
+    }
+  },
+  loadCachedPosts: async (cacheKey = "cachedPosts") => {
+    try {
+      const cachedData = await AsyncStorage.getItem(cacheKey);
+      if (!cachedData) {
+        return { posts: [], nextPageToken: null };
+      }
+
+      const parsed = JSON.parse(cachedData);
+      const posts = Array.isArray(parsed) ? parsed : parsed.posts || [];
+      const timestamp = Array.isArray(parsed) ? null : parsed.timestamp;
+      const nextPageToken = parsed.nextPageToken || null;
+
+      const CACHE_MAX_AGE = 24 * 60 * 60 * 1000;
+      if (timestamp && Date.now() - timestamp > CACHE_MAX_AGE) {
+        console.log(`⚠️ Cache stale, clearing key=${cacheKey}`);
+        await helperFunctions.clearCachedPosts(cacheKey);
+        return { posts: [], nextPageToken: null };
+      }
+
+      console.log(`✅ Loaded cached posts: key=${cacheKey}, count=${posts.length}, hasNextPage=${!!nextPageToken}`);
+      return { posts: Array.isArray(posts) ? posts : [], nextPageToken: nextPageToken };
+    } catch (error) {
+      console.error("❌ Error loading cached posts:", error);
+      return { posts: [], nextPageToken: null };
+    }
+  },
+  clearCachedPosts: async (cacheKey = "cachedPosts") => {
+    try {
+      await AsyncStorage.removeItem(cacheKey);
+      console.log(`✅ Cached posts cleared: key=${cacheKey}`);
+    } catch (error) {
+      console.error("❌ Error clearing cached posts:", error);
+    }
+  },
+  saveCachedLocation: async (location) => {
+    try {
+      if (location && location.latitude && location.longitude) {
+        await AsyncStorage.setItem("cachedLocation", JSON.stringify(location));
+        console.log("✅ Location cached:", location);
+      }
+    } catch (error) {
+      console.error("❌ Error caching location:", error);
+    }
+  },
+  getCachedLocation: async () => {
+    try {
+      const location = await AsyncStorage.getItem("cachedLocation");
+      return location ? JSON.parse(location) : null;
+    } catch (error) {
+      console.error("❌ Error getting cached location:", error);
+      return null;
+    }
+  },
   getModerateScale: (number) => {
     return PixelRatio.getPixelSizeForLayoutSize(number);
   },
@@ -148,5 +223,22 @@ export const helperFunctions = {
         })}
       </View>
     );
+  },
+  calculateDistance: (lat1, lon1, lat2, lon2) => {
+    // Haversine formula to calculate distance in miles
+    if (!lat1 || !lon1 || !lat2 || !lon2) {
+      return Infinity; // Return large distance if coordinates are missing
+    }
+    const R = 3959; // Earth's radius in miles
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
   },
 };

@@ -11,6 +11,8 @@ import {
   SafeAreaView,
   StyleSheet,
   Vibration,
+  Alert,
+  Linking,
 } from "react-native";
 import { useDispatch, useSelector } from "react-redux";
 import LoadingComponent from "../Components/LoadingComponent";
@@ -55,6 +57,21 @@ export default function SplashScreen(props) {
   const [isLoading, setIsLoading] = useState(false);
   const [loaderTitle, setLoaderTitle] = useState("Please wait");
 
+  // Location validation function
+  const validateLocation = (coordinates) => {
+    console.log("validateLocation", coordinates);
+    // Reject invalid coordinates
+    if (!coordinates || 
+        coordinates.latitude === 0 && coordinates.longitude === 0 ||
+        Math.abs(coordinates.latitude) > 90 ||
+        Math.abs(coordinates.longitude) > 180 ||
+        !coordinates.latitude ||
+        !coordinates.longitude) {
+      return false;
+    }
+    return true;
+  };
+
   function generateUsername() {
     let result = "User";
     const characters =
@@ -68,207 +85,305 @@ export default function SplashScreen(props) {
     return result;
   }
 
-  const getLocation = () => {
-    return new Promise((resolve, reject) => {
-      Geolocation.getCurrentPosition(
-        (info) => {
-          const coordinates = {
-            latitude: info.coords.latitude,
-            longitude: info.coords.longitude,
-          };
-          console.log("📍 Got user location:", coordinates);
-          dispatch(setLocation(coordinates));
-          resolve(coordinates);
-        },
-        (err) => {
-          console.log("⚠️ Location error:", err);
-          // Use default location if permission denied
-          const defaultLocation = {
-            latitude: 37.7749,
-            longitude: -122.4194,
-          };
-          dispatch(setLocation(defaultLocation));
-          resolve(defaultLocation);
-        },
-        {
-          enableHighAccuracy: false,
-          timeout: 5000,
-          maximumAge: 3600000,
-        }
-      );
+  const getLocation = (isBackgroundRefresh = false) => {
+    return new Promise((resolve) => {
+      console.log(`Getting user location on splash screen (BackgroundRefresh: ${isBackgroundRefresh})..............`);
+      if (!isBackgroundRefresh) {
+        setLoaderTitle("Fetching location...");
+      }
+
+      const tryGetLocation = (useHighAccuracy = true) => {
+        console.log(`📍 Attempting location fetch (HighAccuracy: ${useHighAccuracy})`);
+        
+        const timeoutId = setTimeout(() => {
+          console.log("⏰ Location fetch timed out, trying low accuracy...");
+          if (useHighAccuracy) {
+            tryGetLocation(false);
+          } else {
+            if (!isBackgroundRefresh) {
+              showLocationErrorAlert("We couldn't fetch your location. Please check your GPS settings and try again.", () => tryGetLocation(true), resolve);
+            } else {
+              resolve(null);
+            }
+          }
+        }, 10000);
+
+        Geolocation.getCurrentPosition(
+          (info) => {
+            clearTimeout(timeoutId);
+            console.log("Got user location on splash screen..............");
+            const coordinates = {
+              latitude: info.coords.latitude,
+              longitude: info.coords.longitude,
+            };
+            
+            if (validateLocation(coordinates)) {
+              console.log("📍 Got user location:", coordinates);
+              dispatch(setLocation(coordinates));
+              helperFunctions.saveCachedLocation(coordinates);
+              resolve(coordinates);
+            } else {
+              console.warn("⚠️ Invalid location received:", coordinates);
+              if (!isBackgroundRefresh) {
+                showLocationErrorAlert("We received an invalid location. Would you like to try again?", () => tryGetLocation(true), resolve);
+              } else {
+                resolve(null);
+              }
+            }
+          },
+          (err) => {
+            clearTimeout(timeoutId);
+            console.log("⚠️ Location error:", err);
+            if (useHighAccuracy) {
+              console.log("🔄 High accuracy failed, retrying with low accuracy...");
+              tryGetLocation(false);
+            } else {
+              if (err.code === 1) {
+                // Permission denied
+                if (!isBackgroundRefresh) {
+                  showPermissionDeniedAlert(() => tryGetLocation(true), resolve);
+                } else {
+                  resolve(null);
+                }
+              } else {
+                // Timeout or other error
+                if (!isBackgroundRefresh) {
+                  showLocationErrorAlert("We couldn't fetch your location. Please check your GPS settings and try again.", () => tryGetLocation(true), resolve);
+                } else {
+                  resolve(null);
+                }
+              }
+            }
+          },
+          {
+            enableHighAccuracy: useHighAccuracy,
+            timeout: 10000,
+            maximumAge: 0,
+          }
+        );
+      };
+
+      const showPermissionDeniedAlert = (retryFn, resolveFn) => {
+        Alert.alert(
+          "Location Permission Required",
+          "Nearby restaurants require your location. Please enable it in settings to continue.",
+          [
+            { text: "Retry", onPress: () => retryFn() },
+            { text: "Open Settings", onPress: () => {
+              Linking.openSettings();
+              // We don't resolve here because we need a valid location to proceed
+            }},
+          ],
+          { cancelable: false }
+        );
+      };
+
+      const showLocationErrorAlert = (message, retryFn, resolveFn) => {
+        Alert.alert(
+          "Location Error",
+          message,
+          [
+            { text: "Retry", onPress: () => retryFn() },
+          ],
+          { cancelable: false }
+        );
+      };
+
+      tryGetLocation(true);
     });
   };
 
   const getInitialData = async () => {
+    setIsLoading(true);
+    // 1. Check for cached location first
+    const cachedLocation = await helperFunctions.getCachedLocation();
+    if (cachedLocation && validateLocation(cachedLocation)) {
+      console.log("📍 SplashScreen: Found cached location:", cachedLocation);
+      dispatch(setLocation(cachedLocation));
+    }
+
     let token = await helperFunctions.getAccessToken();
     if (token) {
       setIsLoading(true);
       setLoaderTitle("Connecting to server...");
       try {
-        // Get location first
-        await getLocation();
+        console.log("Getting user current location..............");
+        // Get location first (background refresh if cache exists)
+        await getLocation(!!cachedLocation);
+        console.log("after  user current location..............");
+        // ✅ Fetch essential data first, supplemental data in parallel
+        console.log("🔄 SplashScreen: Starting parallel data fetch...");
+        
+        // Essential for Home screen: User profile (for settings) and Categories (for filtering)
+        const essentialResults = await Promise.allSettled([
+          apiHandler.getUserData(token),
+          apiHandler.getAllCategories(token),
+        ]);
 
-        let userData = await apiHandler.getUserData(token);
-        console.log("A");
-        // Handle case where getUserData returns null (user not found)
-        if (!userData) {
-          console.log("⚠️ User data not found - invalid token, clearing and navigating to login");
-          setIsLoading(false);
-          // Clear invalid token
-          await helperFunctions.clearAccessToken();
-          // Navigate to landing screen
-          setTimeout(() => {
-            try {
-              navigation.dispatch(
-                CommonActions.reset({
-                  index: 0,
-                  routes: [{ name: navigationStrings.LandingScreen }],
-                })
-              );
-            } catch (navError) {
-              console.log("Navigation error:", navError);
-              navigation.navigate(navigationStrings.LandingScreen);
-            }
-          }, 100);
-          return; // Exit early
-        }
-        let userSavedAppSettings = userData?.app_settings;
-        let categories = await apiHandler.getAllCategories(token);
-        console.log("B");
-        let adminAdvertisements = await apiHandler.getAdminPanelAdvertisements(
-          token
-        );
-        console.log("C");
+        const [userDataRes, categoriesRes] = essentialResults;
 
-        // Default to light mode (white background) for new users
-        let isDarkMode = userSavedAppSettings?.dark_mode === "true";
-        let isToggleDarkMode = userSavedAppSettings?.toggledark_mode === "true";
-        let isVibrationEnabled = userSavedAppSettings?.vibrations !== "false";
-
-        console.log("DHDHDH");
-        let likedInAppPosts = await apiHandler.getFavoriteRestaurants(token);
-        console.log("D");
-        let googlePosts = await apiHandler.getGoogleLikedPosts(token);
-        console.log("E");
-        let favoriteRestaurants = await apiHandler.getLikedRestaurants(token);
-        console.log("F");
-        // Backend returns { id, name, google_photo_reference, ... }
-        favoriteRestaurants = favoriteRestaurants
-          .map((item, index) => {
-            // Construct Google image URL if photo reference exists
-            let restaurantImage = null;
-            if (item.google_photo_reference) {
-              restaurantImage = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${item.google_photo_reference}&key=AIzaSyCLb-WobrzT3gvpXDLkNYPWbIpd30bxKLQ`;
-            } else if (item.image) {
-              restaurantImage = item.image;
-            }
-
-            // Use google_place_id as restaurant_id for proper navigation
-            const restaurantId =
-              item.google_place_id || item.restaurant_id || item.id;
-
-            return {
-              restaurantName:
-                item.name || item.restaurant_name || "Unknown Restaurant",
-              restaurantImage: restaurantImage,
-              restaurant_id: restaurantId,
-              google_place_id: item.google_place_id,
-            };
-          })
-          .filter((item) => {
-            // Filter out entries with incomplete/invalid data
-            const hasValidId = item.restaurant_id && item.google_place_id;
-            const hasValidName =
-              item.restaurantName &&
-              item.restaurantName !== "Unknown Restaurant";
-
-            if (!hasValidId || !hasValidName) {
-              console.log("⚠️ Skipping invalid restaurant:", {
-                name: item.restaurantName,
-                id: item.restaurant_id,
-                google_place_id: item.google_place_id,
-              });
-              return false;
-            }
-            return true;
-          });
-        dispatch(setLikedPosts(likedInAppPosts));
-        dispatch(setFavouritePlaces(googlePosts));
-        dispatch(setFavoriteRestaurants(favoriteRestaurants));
-        dispatch(setFoodCategories(categories));
-        dispatch(setAdminAdvertisements(adminAdvertisements));
-        dispatch(toggleDarkMode(isDarkMode));
-        dispatch(enableDarkModeAutoUpdate(isToggleDarkMode));
-        dispatch(updateVibrationSettings(isVibrationEnabled));
-        dispatch(setUserData(userData));
-        dispatch(setAccessToken(token));
-
-        // ✅ Load user preferences from database (if they exist)
-        const userSettings = userData?.user_settings;
-        if (userSettings) {
-          console.log(
-            "📊 Loading user preferences from database:",
-            userSettings
-          );
-
-          // Load saved radius
-          if (userSettings.search_radius) {
-            dispatch(savePostsRadius(userSettings.search_radius));
-            console.log("✅ Loaded radius:", userSettings.search_radius);
-          }
-
-          // Load saved categories
-          if (
-            userSettings.favorite_categories &&
-            userSettings.favorite_categories.length > 0
-          ) {
-            // Map category IDs to full category objects
-            const savedCategories = categories.filter((cat) =>
-              userSettings.favorite_categories.includes(cat.id)
-            );
-            if (savedCategories.length > 0) {
-              dispatch(updateFoodCategories(savedCategories));
-              console.log("✅ Loaded categories:", savedCategories);
-            }
-          }
-        }
-
-        dispatch(setLoadNewPosts(true)); // ✅ Load posts on home screen
-        setIsLoading(false);
-      } catch (error) {
-        console.log("Error loading user data:", error);
-        setIsLoading(false);
-        // Use reset to properly navigate to LandingScreen
-        setTimeout(() => {
-          try {
-            navigation.dispatch(
-              CommonActions.reset({
+        // Process User Data & Settings (Required for session check)
+        if (userDataRes.status === 'rejected') {
+          const error = userDataRes.reason;
+          console.log("❌ SplashScreen: User data fetch rejected:", error.message);
+          
+          if (error.status === 401) {
+            console.log("⚠️ SplashScreen: Session expired (401), logging out...");
+            setIsLoading(false);
+            await helperFunctions.clearAccessToken();
+            setTimeout(() => {
+              navigation.dispatch(CommonActions.reset({
                 index: 0,
-                routes: [{ name: navigationStrings.LandingScreen }],
-              })
-            );
-          } catch (navError) {
-            console.log("Navigation error:", navError);
-            // Fallback to navigate if reset fails
-            navigation.navigate(navigationStrings.LandingScreen);
+                routes: [{ name: navigationStrings.AuthBottomNavigation }],
+              }));
+            }, 100);
+            return;
+          } else {
+            console.log("📡 SplashScreen: Network or server error, proceeding with offline mode");
           }
+        }
+
+        const userData = userDataRes.status === 'fulfilled' ? userDataRes.value : null;
+        const categories = categoriesRes.status === 'fulfilled' ? categoriesRes.value || [] : [];
+
+        if (userData) {
+          const userSavedAppSettings = userData?.app_settings;
+          let isDarkMode = userSavedAppSettings?.dark_mode === "true";
+          let isToggleDarkMode = userSavedAppSettings?.toggledark_mode === "true";
+          let isVibrationEnabled = userSavedAppSettings?.vibrations !== "false";
+
+          dispatch(toggleDarkMode(isDarkMode));
+          dispatch(enableDarkModeAutoUpdate(isToggleDarkMode));
+          dispatch(updateVibrationSettings(isVibrationEnabled));
+          dispatch(setUserData(userData));
+          dispatch(setFoodCategories(categories));
+
+          // ✅ Load user preferences (Radius/Categories)
+          const userSettings = userData?.user_settings;
+          if (userSettings) {
+            if (userSettings.search_radius) {
+              const radiusInMiles = Math.round(userSettings.search_radius * 0.621371);
+              dispatch(savePostsRadius(radiusInMiles));
+            }
+            if (userSettings.favorite_categories?.length > 0) {
+              const savedCategories = categories.filter((cat) =>
+                userSettings.favorite_categories.includes(cat.id)
+              );
+              if (savedCategories.length > 0) {
+                dispatch(updateFoodCategories(savedCategories));
+              }
+            }
+          }
+
+          // ✅ Fallbacks
+          if (!userData.user_settings) {
+            dispatch(savePostsRadius(20));
+            if (categories.length > 0) dispatch(updateFoodCategories(categories));
+          } else if (userSettings) {
+            if (!userSettings.search_radius) dispatch(savePostsRadius(20));
+            if (!userSettings.favorite_categories || userSettings.favorite_categories.length === 0) {
+              if (categories.length > 0) dispatch(updateFoodCategories(categories));
+            }
+          }
+        } else {
+          // No user data (likely network error) - use default settings
+          dispatch(savePostsRadius(20));
+          dispatch(setFoodCategories(categories));
+          if (categories.length > 0) dispatch(updateFoodCategories(categories));
+        }
+
+        // ✅ SET ACCESS TOKEN - Home screen can mount now
+        dispatch(setAccessToken(token));
+        console.log("✅ SplashScreen: Essential initialization complete, navigating to Home");
+        
+        setIsLoading(false);
+        // Start supplemental data fetching in background without awaiting
+        Promise.allSettled([
+          apiHandler.getAdminPanelAdvertisements(token),
+          apiHandler.getFavoriteRestaurants(token),
+          apiHandler.getGoogleLikedPosts(token),
+          apiHandler.getLikedRestaurants(token),
+          apiHandler.userSessionAPI(token, { type: "login", device_type: Platform.OS || "unknown" }).catch(e => ({ id: 0 }))
+        ]).then(supplementalResults => {
+          console.log("🔄 SplashScreen: Supplemental background data fetch complete");
+          const [adsRes, favRes, googlePostsRes, likedRestaurantsRes, sessionRes] = supplementalResults;
+          
+          if (adsRes.status === 'fulfilled') dispatch(setAdminAdvertisements(adsRes.value || []));
+          if (favRes.status === 'fulfilled') dispatch(setLikedPosts(favRes.value || []));
+          if (googlePostsRes.status === 'fulfilled') dispatch(setFavouritePlaces(googlePostsRes.value || []));
+          if (sessionRes.status === 'fulfilled') dispatch(setCurrentSessionId(sessionRes.value?.id || 0));
+          
+          if (likedRestaurantsRes.status === 'fulfilled') {
+            const rawFavoriteRestaurants = likedRestaurantsRes.value || [];
+            const favoriteRestaurants = rawFavoriteRestaurants
+              .map((item) => {
+                let restaurantImage = null;
+                if (item.google_photo_reference) {
+                  restaurantImage = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${item.google_photo_reference}&key=${GOOGLE_API_KEY}`;
+                } else if (item.image) {
+                  restaurantImage = item.image;
+                }
+                const restaurantId = item.google_place_id || item.restaurant_id || item.id;
+                return {
+                  restaurantName: item.name || item.restaurant_name || "Unknown Restaurant",
+                  restaurantImage: restaurantImage,
+                  restaurant_id: restaurantId,
+                  google_place_id: item.google_place_id,
+                };
+              })
+              .filter((item) => item.restaurant_id && item.google_place_id);
+            dispatch(setFavoriteRestaurants(favoriteRestaurants));
+          }
+        });
+
+        // Navigate immediately
+        setTimeout(() => {
+          navigation.dispatch(
+            CommonActions.reset({
+              index: 0,
+              routes: [{ name: navigationStrings.MainStack }],
+            })
+          );
         }, 100);
+      } catch (error) {
+        console.log("❌ SplashScreen: Error during initialization:", error);
+        setIsLoading(false);
+        await helperFunctions.clearAccessToken();
+        navigation.navigate(navigationStrings.AuthBottomNavigation);
       }
     } else {
-      // No saved token - go to landing screen
-      // Use reset to properly navigate to LandingScreen
+      // ✅ For guest users: load radius from AsyncStorage (default 20)
+      try {
+        const guestRadius = await AsyncStorage.getItem("guestRadius");
+        if (guestRadius) {
+          dispatch(savePostsRadius(Number(guestRadius)));
+        } else {
+          dispatch(savePostsRadius(20));
+        }
+      } catch (e) {
+        dispatch(savePostsRadius(20));
+      }
+
+      if (!cachedLocation) {
+        setIsLoading(true);
+        setLoaderTitle("Fetching location...");
+      }
+      await getLocation(!!cachedLocation);
+      setIsLoading(false);
+
+      // No saved token - go directly to AuthBottomNavigation (skip LandingScreen carousel)
       setTimeout(() => {
         try {
           navigation.dispatch(
             CommonActions.reset({
               index: 0,
-              routes: [{ name: navigationStrings.LandingScreen }],
+              routes: [{ name: navigationStrings.AuthBottomNavigation }],
             })
           );
         } catch (navError) {
           console.log("Navigation error:", navError);
           // Fallback to navigate if reset fails
-          navigation.navigate(navigationStrings.LandingScreen);
+          navigation.navigate(navigationStrings.AuthBottomNavigation);
         }
       }, 100);
     }

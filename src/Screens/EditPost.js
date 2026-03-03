@@ -428,20 +428,6 @@ export default function EditPost(props) {
                             Post Title
                         </Text>
                         <AuthTextInput customStyles={styles.titleInputContainer} customTextInputStyles={{ textAlignVertical: 'center' }} placeholder={'Enter title'} value={title} onChangeText={(text) => { onTitleChange(text) }} />
-                        <Text style={commonStyles.textWhite(16, { fontWeight: '700', marginTop: moderateScale(8), color: currentThemeSecondaryColor })}>
-                            Select food category :
-                        </Text>
-                        <View style={styles.categoriesFullContainer}>
-                            {allFoodCategories.map((item, index) => {
-                                return <TouchableOpacity onPress={() => {
-                                    onCategorySelect(item.id)
-                                }} style={styles.singleCategoryContainer(item.id == selectedCategory, currentThemeSecondaryColor, currentThemePrimaryColor)}>
-                                    <Text style={commonStyles.textWhite(11, { color: item.id == selectedCategory ? currentThemePrimaryColor : currentThemeSecondaryColor })}>
-                                        {item.name}
-                                    </Text>
-                                </TouchableOpacity>
-                            })}
-                        </View>
                         <Text style={commonStyles.textWhite(16, { fontWeight: '700', marginTop: moderateScale(10), color: currentThemeSecondaryColor })}>
                             Write Reviews :
                         </Text>
@@ -454,6 +440,8 @@ export default function EditPost(props) {
                                     placeholder={'Enter review'}
                                     multiline={true}
                                     placeholderTextColor={colors.black}
+                                    returnKeyType="done"
+                                    blurOnSubmit={true}
                                     onSubmitEditing={() => {
                                         textInputRef.current.blur()
                                     }}
@@ -462,9 +450,6 @@ export default function EditPost(props) {
                             </View>
                         </View>
                         <View style={styles.ratingsFullContainer}>
-                            <Text style={commonStyles.textWhite(24, { fontWeight: '600', color: currentThemeSecondaryColor })}>
-                                Crunch Store:
-                            </Text>
                             {ratingsData.map((item, index) => {
                                 return <PressableImage key={index} imageSource={item <= ratingCount ? imagePath.filledStar : imagePath.unfilledStar} imageStyle={styles.singleRatingStar} onImagePress={() => { setRatingsCount(item) }} />
                             })}
@@ -551,7 +536,13 @@ const styles = StyleSheet.create({
         borderColor: colors.darkGrey,
     },
     googleRowContainer: { padding: moderateScale(2) },
-    postMediaFullContainer: { flexDirection: 'row', marginTop: moderateScale(6) },
+    postMediaFullContainer: {
+        flexDirection: "row",
+        marginTop: moderateScale(6),
+        alignItems: "center",
+        justifyContent: "center",
+        alignSelf: "center",
+    },
     removeMediaContainer: { color: '#aa0000', fontSize: 20, position: 'absolute', zIndex: 5, right: -7, top: -10 },
     singleMediaContainer: {
         height: moderateScale(28),
@@ -578,7 +569,8 @@ const styles = StyleSheet.create({
         alignSelf: 'center',
         backgroundColor: colors.lightGrey,
         borderRadius: moderateScale(8),
-        opacity: 0.8
+        opacity: 0.8,
+        alignItems: 'flex-start',
     },
     reviewInputInnerContainer: {
         flex: 1,

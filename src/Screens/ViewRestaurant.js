@@ -38,6 +38,10 @@ import MaterialIcons from "react-native-vector-icons/MaterialIcons";
 import ErrorComponent from "../Components/ErrorComponent";
 import Video from "react-native-video";
 import Carousel from "react-native-snap-carousel";
+import { helperFunctions } from "../Constants/helperFunctions";
+import Ionicons from "react-native-vector-icons/Ionicons";
+import { navigationStrings } from "../Navigation/NavigationStrings";
+import { showHideForceLoginModal } from "../Redux/actions/actions";
 
 export default function ViewRestaurant(props) {
   const route = useRoute();
@@ -338,6 +342,20 @@ export default function ViewRestaurant(props) {
     );
   };
 
+  const onAddPostPress = () => {
+    // Check if user is logged in
+    if (!accessToken) {
+      dispatch(showHideForceLoginModal(true));
+      return;
+    }
+    navigation.navigate(navigationStrings.AddPost, {
+      selectedRestaurant: restaurantName,
+      selectedRestaurantID: restaurant_id,
+      latitude: location?.lat,
+      longitude: location?.lng,
+    });
+  };
+
   const onPhoneButtonPress = () => {
     if (restaurantPhoneNumber) {
       let phoneNumber = "";
@@ -413,6 +431,7 @@ export default function ViewRestaurant(props) {
       if (mediaItem.mediaType == "image") {
         return (
           <TouchableOpacity
+            key={`media-img-${mediaIndex}`}
             onPress={() => {
               onSingleMediaItemPress(mediaIndex);
             }}
@@ -433,6 +452,7 @@ export default function ViewRestaurant(props) {
       } else {
         return (
           <TouchableOpacity
+            key={`media-vid-${mediaIndex}`}
             onPress={() => {
               onSingleMediaItemPress(mediaIndex);
             }}
@@ -455,6 +475,7 @@ export default function ViewRestaurant(props) {
     } else {
       return (
         <TouchableOpacity
+          key={`media-google-${mediaIndex}`}
           onPress={() => {
             onSingleMediaItemPress(mediaIndex);
           }}
@@ -549,7 +570,7 @@ export default function ViewRestaurant(props) {
                     paddingHorizontal: moderateScale(5),
                   })}
                 >
-                  {"Today timings - " + todayTiming}
+                  {"Hours: " + todayTiming}
                 </Text>
               ) : null}
               <View style={styles.ratingsContainer}>
@@ -561,35 +582,67 @@ export default function ViewRestaurant(props) {
                 >
                   Average Rating:
                 </Text>
-                {helperFunctions.getStarRatings(item.rating)}
+                {helperFunctions.getStarRatings(ratings)}
               </View>
               <View
                 style={{
                   width: windowWidth - moderateScale(16),
                   flexDirection: "row",
-                  justifyContent: "space-evenly",
+                  justifyContent: "space-between",
                   marginTop: moderateScale(6),
                 }}
               >
                 <TouchableOpacity
-                  onPress={onMapsPress}
+                  onPress={onAddPostPress}
                   style={{
-                    padding: moderateScale(6),
-                    paddingHorizontal: moderateScale(4),
+                    flex: 0.8,
+                    paddingVertical: moderateScale(6),
+                    paddingHorizontal: moderateScale(1),
                     flexDirection: "row",
                     alignItems: "center",
+                    justifyContent: "center",
                     backgroundColor: colors.appPrimary,
                     borderRadius: moderateScale(8),
+                    marginHorizontal: moderateScale(1),
+                  }}
+                >
+                  <Ionicons
+                    name="add-circle"
+                    style={{ fontSize: moderateScale(10), color: colors.white }}
+                  />
+                  <Text
+                    numberOfLines={1}
+                    style={commonStyles.textWhite(11, {
+                      color: colors.white,
+                      marginLeft: moderateScale(1),
+                    })}
+                  >
+                    Post
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={onMapsPress}
+                  style={{
+                    flex: 1.4,
+                    paddingVertical: moderateScale(6),
+                    paddingHorizontal: moderateScale(1),
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: colors.appPrimary,
+                    borderRadius: moderateScale(8),
+                    marginHorizontal: moderateScale(1),
                   }}
                 >
                   <MaterialIcons
                     name="explore"
-                    style={{ fontSize: moderateScale(12), color: colors.white }}
+                    style={{ fontSize: moderateScale(10), color: colors.white }}
                   />
                   <Text
-                    style={commonStyles.textWhite(16, {
+                    numberOfLines={1}
+                    style={commonStyles.textWhite(11, {
                       color: colors.white,
-                      marginLeft: moderateScale(2),
+                      marginLeft: moderateScale(1),
                     })}
                   >
                     Directions
@@ -598,22 +651,26 @@ export default function ViewRestaurant(props) {
                 <TouchableOpacity
                   onPress={onPhoneButtonPress}
                   style={{
-                    padding: moderateScale(6),
-                    paddingHorizontal: moderateScale(4),
+                    flex: 0.8,
+                    paddingVertical: moderateScale(6),
+                    paddingHorizontal: moderateScale(1),
                     flexDirection: "row",
                     alignItems: "center",
+                    justifyContent: "center",
                     backgroundColor: colors.appPrimary,
                     borderRadius: moderateScale(8),
+                    marginHorizontal: moderateScale(1),
                   }}
                 >
                   <FontAwesome
                     name="phone"
-                    style={{ fontSize: moderateScale(12), color: colors.white }}
+                    style={{ fontSize: moderateScale(10), color: colors.white }}
                   />
                   <Text
-                    style={commonStyles.textWhite(16, {
+                    numberOfLines={1}
+                    style={commonStyles.textWhite(11, {
                       color: colors.white,
-                      marginLeft: moderateScale(2),
+                      marginLeft: moderateScale(1),
                     })}
                   >
                     Call
@@ -625,15 +682,18 @@ export default function ViewRestaurant(props) {
                     restaurantWebsite == undefined || restaurantWebsite == ""
                   }
                   style={{
-                    padding: moderateScale(6),
-                    paddingHorizontal: moderateScale(4),
+                    flex: 1,
+                    paddingVertical: moderateScale(6),
+                    paddingHorizontal: moderateScale(1),
                     flexDirection: "row",
                     alignItems: "center",
+                    justifyContent: "center",
                     backgroundColor:
                       restaurantWebsite == undefined || restaurantWebsite == ""
                         ? colors.darkGrey
                         : colors.appPrimary,
                     borderRadius: moderateScale(8),
+                    marginHorizontal: moderateScale(1),
                   }}
                 >
                   <MaterialCommunityIcons
@@ -642,12 +702,13 @@ export default function ViewRestaurant(props) {
                         ? "web-off"
                         : "web"
                     }
-                    style={{ fontSize: moderateScale(12), color: colors.white }}
+                    style={{ fontSize: moderateScale(10), color: colors.white }}
                   />
                   <Text
-                    style={commonStyles.textWhite(16, {
+                    numberOfLines={1}
+                    style={commonStyles.textWhite(11, {
                       color: colors.white,
-                      marginLeft: moderateScale(2),
+                      marginLeft: moderateScale(1),
                     })}
                   >
                     Website
@@ -714,7 +775,7 @@ export default function ViewRestaurant(props) {
                 reviews.length > 0 &&
                 reviews.map((item, index) => {
                   return (
-                    <View>
+                    <View key={`review-${index}`}>
                       <View style={styles.singleReviewContainer}>
                         <View style={styles.singleReviewInnerContainer}>
                           <Image
@@ -763,6 +824,7 @@ export default function ViewRestaurant(props) {
                           return (
                             innerItem <= Math.round(item.rating) && (
                               <Image
+                                key={`star-${innerIndex}`}
                                 source={imagePath.filledStar}
                                 style={{
                                   height: 20,

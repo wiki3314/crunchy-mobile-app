@@ -488,7 +488,7 @@ export default function AppLaunchedFromLink(props) {
                     paddingHorizontal: moderateScale(5),
                   })}
                 >
-                  {"Today timings - " + todayTiming}
+                  {"Hours: " + todayTiming}
                 </Text>
               ) : null}
               <View style={styles.ratingsContainer}>

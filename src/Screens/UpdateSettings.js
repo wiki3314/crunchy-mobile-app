@@ -54,7 +54,11 @@ export default function UpdateSettings(props) {
             arrSelectedOptions.push(appSettings[2])
         }
         setSelectedOptions(arrSelectedOptions)
-    }, [])
+        // Update local state when Redux state changes
+        setDarkModeState(isDarkModeActive)
+        setAutoToggleDarkMode(autoUpdateDarkMode)
+        setVibrationsEnabled(isVibrationEnabled)
+    }, [isDarkModeActive, autoUpdateDarkMode, isVibrationEnabled])
 
     const [isLoading, setIsLoading] = useState(false)
     const [loaderTitle, setLoaderTitle] = useState("")
@@ -95,23 +99,38 @@ export default function UpdateSettings(props) {
     }
 
     const renderSingleSetting = ({ item, index }) => {
-        return <TouchableOpacity style={styles.singleSettingContainer}>
-            <View style={styles.singleSettingInnerContainer}>
-                <Text style={commonStyles.textWhite(18, { color: currentThemeSecondaryColor, fontWeight: '700' })}>
-                    {item.name}
-                </Text>
-                <Text style={commonStyles.textWhite(14, { color: currentThemeSecondaryColor, fontWeight: '600' })}>
-                    {item.description}
-                </Text>
-            </View>
-            <FontAwesome name={selectedOptions && selectedOptions.length > 0 && selectedOptions.findIndex((innerItem, innerIndex) => {
-                return innerItem.id == item.id
-            }) != -1 ? 'toggle-on' : 'toggle-off'} color={selectedOptions && selectedOptions.length > 0 && selectedOptions.findIndex((innerItem, innerIndex) => {
-                return innerItem.id == item.id
-            }) != -1 ? colors.appPrimary : colors.grey} style={{ fontSize: 35 }} onPress={() => {
-                onSingleOptionPress(item)
-            }} />
-        </TouchableOpacity>
+        let isOptionSelected = false;
+        switch (item.id) {
+            case 0:
+                isOptionSelected = darkModeState;
+                break;
+            case 1:
+                isOptionSelected = autoToggleDarkMode;
+                break;
+            case 2:
+                isOptionSelected = vibrationsEnabled;
+                break;
+        }
+        return (
+            <TouchableOpacity 
+                style={styles.singleSettingContainer} 
+                onPress={() => onSingleOptionPress(item)}
+            >
+                <View style={styles.singleSettingInnerContainer}>
+                    <Text style={commonStyles.textWhite(18, { color: currentThemeSecondaryColor, fontWeight: '700' })}>
+                        {item.name}
+                    </Text>
+                    <Text style={commonStyles.textWhite(14, { color: currentThemeSecondaryColor, fontWeight: '600', opacity: 0.8 })}>
+                        {item.description}
+                    </Text>
+                </View>
+                <FontAwesome 
+                    name={isOptionSelected ? 'toggle-on' : 'toggle-off'} 
+                    color={isOptionSelected ? colors.appPrimary : colors.grey} 
+                    style={{ fontSize: 35 }} 
+                />
+            </TouchableOpacity>
+        );
     }
 
     const onSaveSettingsPress = async () => {
@@ -155,23 +174,36 @@ export default function UpdateSettings(props) {
                     setShowErrorMessage(false)
                 }, 1100)
             }} toastMessage={errorMessage} />
-            <View style={commonStyles.screenContainer}>
+            <View style={[commonStyles.screenContainer, { backgroundColor: currentThemePrimaryColor }]}>
                 <View style={styles.fullHeaderContainer}>
                     <Ionicons name='chevron-back-outline' style={styles.iconStyle(currentThemeSecondaryColor)} onPress={onBackIconPress} />
                     <Text style={commonStyles.textWhite(20, { color: currentThemeSecondaryColor, fontWeight: 'bold', alignSelf: 'center' })}>
                         App settings
                     </Text>
-                    <Text onPress={onSaveSettingsPress} style={commonStyles.textWhite(16, { color: currentThemeSecondaryColor, fontWeight: '600', })}>
-                        Save
-                    </Text>
+                    <TouchableOpacity onPress={onSaveSettingsPress}>
+                        <Text style={commonStyles.textWhite(16, { color: colors.appPrimary, fontWeight: '700', })}>
+                            Save changes
+                        </Text>
+                    </TouchableOpacity>
                 </View>
-                <View style={commonStyles.fullScreenContainer}>
+                <View style={[commonStyles.fullScreenContainer, { backgroundColor: currentThemePrimaryColor, paddingHorizontal: moderateScale(10) }]}>
                     <FlatList
                         data={appSettings}
                         renderItem={renderSingleSetting}
                         keyExtractor={(item) => {
                             return item.id.toString()
-                        }} />
+                        }} 
+                        ListFooterComponent={() => (
+                            <TouchableOpacity 
+                                style={styles.saveButton} 
+                                onPress={onSaveSettingsPress}
+                            >
+                                <Text style={commonStyles.textWhite(18, { fontWeight: '700' })}>
+                                    Save changes
+                                </Text>
+                            </TouchableOpacity>
+                        )}
+                    />
                 </View>
             </View>
         </SafeAreaView>
@@ -212,5 +244,13 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center'
+    },
+    saveButton: {
+        backgroundColor: colors.appPrimary,
+        paddingVertical: moderateScale(12),
+        borderRadius: moderateScale(12),
+        alignItems: 'center',
+        marginTop: moderateScale(20),
+        marginBottom: moderateScale(40),
     }
 })

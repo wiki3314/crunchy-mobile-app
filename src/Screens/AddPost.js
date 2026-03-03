@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  Keyboard,
   Modal,
   PermissionsAndroid,
   Platform,
@@ -120,10 +121,15 @@ export default function AddPost(props) {
       setTitle(postToBeUpdated.name);
       setReview(postToBeUpdated.review);
       setStarRatings(postToBeUpdated.rating);
-      let objCategory = { id: postToBeUpdated.category_id };
-      setSelectedCategory(objCategory);
+      setSelectedCategory(postToBeUpdated.category_id);
     }
-  }, []);
+    if (route.params?.selectedRestaurant) {
+      setSelectedRestaurant(route.params.selectedRestaurant);
+      setSelectedRestaurantID(route.params.selectedRestaurantID);
+      setLatitude(route.params.latitude);
+      setLongitude(route.params.longitude);
+    }
+  }, [route.params]);
 
   const onReviewChange = (text) => {
     setReview(text);
@@ -136,10 +142,18 @@ export default function AddPost(props) {
   const onMockRestaurantSelect = (restaurant) => {
     setSelectedRestaurant(restaurant.restaurantName);
     setSelectedRestaurantID(restaurant.restaurant_id);
-    setLatitude(userLocation.latitude || 37.7749);
-    setLongitude(userLocation.longitude || -122.4194);
+    // Only use user location if available, don't default to wrong location
+    if (userLocation && userLocation.latitude && userLocation.longitude) {
+      setLatitude(userLocation.latitude);
+      setLongitude(userLocation.longitude);
+    }
+    // If no location, latitude/longitude will remain as their initial state
     setShowMockRestaurantPicker(false);
     setMockSearchQuery(restaurant.restaurantName);
+    // Auto-detect category - use first category as default
+    if (allFoodCategories && allFoodCategories.length > 0) {
+      setSelectedCategory(allFoodCategories[0].id);
+    }
   };
 
   const filteredMockRestaurants = mockRestaurants.filter((restaurant) =>
@@ -151,12 +165,6 @@ export default function AddPost(props) {
   const onShareReviewPress = async () => {
     if (ratingCount == 0) {
       setErrorMessage("Rating is missing");
-      setShowErrorMessage(true);
-      if (isVibrationEnabled) {
-        Vibration.vibrate(errorVibrationPattern);
-      }
-    } else if (selectedCategory == -1) {
-      setErrorMessage("No Category selected");
       setShowErrorMessage(true);
       if (isVibrationEnabled) {
         Vibration.vibrate(errorVibrationPattern);
@@ -179,6 +187,13 @@ export default function AddPost(props) {
         ? setLoaderTitle("Updating post")
         : setLoaderTitle("Adding Post");
 
+      // Auto-select category if restaurant is selected but category is not
+      let finalCategoryId = selectedCategory;
+      if (selectedRestaurantID && finalCategoryId == -1 && allFoodCategories && allFoodCategories.length > 0) {
+        finalCategoryId = allFoodCategories[0].id;
+        setSelectedCategory(finalCategoryId);
+      }
+
       // Format images for API - extract URLs only
       const imageUrls = uploadedImages.map((img) => img.url);
 
@@ -188,7 +203,7 @@ export default function AddPost(props) {
         latitude: latitude,
         longitude: longitude,
         user_id: userData.id,
-        category_id: selectedCategory,
+        category_id: finalCategoryId,
         restaurant: selectedRestaurant,
         restaurant_id: selectedRestaurantID,
         images: imageUrls,
@@ -237,7 +252,7 @@ export default function AddPost(props) {
       setStarRatings(appRatingData);
       setRatingCount(0);
       setReview("");
-      setSelectedCategory({});
+      setSelectedCategory(-1);
       setUploadedImages([]);
       setUploadedImagesThumbnails([]);
       setSelectedRestaurant("");
@@ -750,10 +765,11 @@ export default function AddPost(props) {
           showBackButton={false}
         />
         <View style={styles.screenInnerContainer}>
-          <ScrollView
-            keyboardShouldPersistTaps="always"
-            showsVerticalScrollIndicator={false}
-          >
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
             <Text
               style={commonStyles.textWhite(16, {
                 fontWeight: "700",
@@ -799,6 +815,10 @@ export default function AddPost(props) {
                   setLongitude(details.geometry.location.lng);
                   setSelectedRestaurant(data.structured_formatting.main_text);
                   setSelectedRestaurantID(data.place_id);
+                  // Auto-detect category - use first category as default (category mapping from restaurant types would require backend support)
+                  if (allFoodCategories && allFoodCategories.length > 0) {
+                    setSelectedCategory(allFoodCategories[0].id);
+                  }
                 }}
                 listViewDisplayed="auto"
                 value={selectedRestaurant}
@@ -883,7 +903,7 @@ export default function AddPost(props) {
             >
               Upload Media
             </Text>
-            <View style={styles.postMediaFullContainer}>
+            <View style={[styles.postMediaFullContainer, { position: 'relative', zIndex: 10 }]}>
               <PressableImage
                 imageSource={imagePath.addIcon}
                 imageStyle={styles.imageStyle}
@@ -929,43 +949,6 @@ export default function AddPost(props) {
             <Text
               style={commonStyles.textWhite(16, {
                 fontWeight: "700",
-                marginTop: moderateScale(8),
-                color: currentThemeSecondaryColor,
-              })}
-            >
-              Select food category :
-            </Text>
-            <View style={styles.foodCategoriesFullContainer}>
-              {allFoodCategories.map((item, index) => {
-                return (
-                  <TouchableOpacity
-                    key={item.id}
-                    onPress={() => {
-                      onCategorySelect(item.id);
-                    }}
-                    style={styles.singleCategoryContainer(
-                      item.id == selectedCategory,
-                      currentThemeSecondaryColor,
-                      currentThemePrimaryColor
-                    )}
-                  >
-                    <Text
-                      style={commonStyles.textWhite(11, {
-                        color:
-                          item.id == selectedCategory
-                            ? currentThemePrimaryColor
-                            : currentThemeSecondaryColor,
-                      })}
-                    >
-                      {item.name}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            <Text
-              style={commonStyles.textWhite(16, {
-                fontWeight: "700",
                 marginTop: moderateScale(10),
                 color: currentThemeSecondaryColor,
               })}
@@ -981,8 +964,10 @@ export default function AddPost(props) {
                   placeholder={"Enter review"}
                   multiline={true}
                   placeholderTextColor={colors.black}
+                  returnKeyType="done"
+                  blurOnSubmit={true}
                   onSubmitEditing={() => {
-                    textInputRef.current.blur();
+                    Keyboard.dismiss();
                   }}
                   onChangeText={(text) => {
                     onReviewChange(text);
@@ -991,14 +976,6 @@ export default function AddPost(props) {
               </View>
             </View>
             <View style={styles.ratingsFullContainer}>
-              <Text
-                style={commonStyles.textWhite(24, {
-                  fontWeight: "600",
-                  color: currentThemeSecondaryColor,
-                })}
-              >
-                Crunch Stars:
-              </Text>
               <PanGestureHandler
                 onGestureEvent={(event) => {
                   handleRatingGesture(event.nativeEvent);
@@ -1015,9 +992,6 @@ export default function AddPost(props) {
                       let ratingViewWidthVal = event.nativeEvent.layout.width;
                       setRatingViewWidth(ratingViewWidthVal);
                     }}
-                    // onPress={(event) => {
-                    //     // let touchedPoint = event.nativeEvent.locationX
-                    // }}
                     style={commonStyles.flexRow_CenterItems}
                   >
                     {starRatings.map((item, index) => {
@@ -1026,8 +1000,8 @@ export default function AddPost(props) {
                           key={`star-${index}`}
                           source={item.imageSource}
                           style={{
-                            height: moderateScale(15),
-                            width: moderateScale(15),
+                            height: moderateScale(22),
+                            width: moderateScale(22),
                             resizeMode: "contain",
                             marginLeft: moderateScale(3),
                           }}
@@ -1047,7 +1021,8 @@ export default function AddPost(props) {
                 color: colors.white,
               })}
             />
-          </ScrollView>
+            </ScrollView>
+          </TouchableWithoutFeedback>
         </View>
         <Modal
           visible={showAddImageModal}
@@ -1149,14 +1124,16 @@ export default function AddPost(props) {
                           <View style={styles.mockRestaurantDetails}>
                             <Text
                               style={commonStyles.textWhite(14, {
-                                color: colors.darkGrey,
+                                color: colors.black,
+                                fontWeight: "600",
                               })}
                             >
                               ⭐ {restaurant.restaurantRating}
                             </Text>
                             <Text
                               style={commonStyles.textWhite(14, {
-                                color: colors.darkGrey,
+                                color: colors.black,
+                                fontWeight: "600",
                                 marginLeft: moderateScale(8),
                               })}
                             >
@@ -1285,7 +1262,15 @@ const styles = StyleSheet.create({
     borderColor: colors.darkGrey,
   },
   googleRowContainer: { padding: moderateScale(2) },
-  postMediaFullContainer: { flexDirection: "row", marginTop: moderateScale(6) },
+  postMediaFullContainer: {
+    flexDirection: "row",
+    marginTop: moderateScale(6),
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+    position: "relative",
+    zIndex: 10,
+  },
   removeMediaContainer: {
     color: "#aa0000",
     fontSize: 20,
@@ -1321,6 +1306,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.lightGrey,
     borderRadius: moderateScale(8),
     opacity: 0.8,
+    alignItems: "flex-start",
   },
   reviewInputInnerContainer: {
     flex: 1,
@@ -1329,13 +1315,16 @@ const styles = StyleSheet.create({
   reviewTextInput: {
     flex: 1,
     padding: 0,
+    paddingTop: moderateScale(4),
     color: colors.black,
     textAlignVertical: "top",
+    textAlign: "left",
   },
   ratingsFullContainer: {
     flexDirection: "row",
     marginTop: moderateScale(10),
     alignItems: "center",
+    justifyContent: "center",
   },
   singleRatingStar: {
     height: moderateScale(12),

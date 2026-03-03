@@ -7,6 +7,8 @@ import {
   Text,
   Vibration,
   View,
+  Alert,
+  Linking,
 } from "react-native";
 import Geolocation from "@react-native-community/geolocation";
 import AuthHeader from "../Components/AuthHeader";
@@ -63,8 +65,8 @@ export default function Login(props) {
     (state) => state.currentThemeSecondaryColor
   );
 
-  const [email, setEmail] = useState("bbc@yopmail.com");
-  const [password, setPassword] = useState("12345678");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showCustomToast, setShowCustomToast] = useState(false);
@@ -123,6 +125,20 @@ export default function Login(props) {
     navigation.navigate(navigationStrings.ForgotPassword);
   };
 
+  // Location validation function
+  const validateLocation = (coordinates) => {
+    // Reject invalid coordinates
+    if (!coordinates || 
+        coordinates.latitude === 0 && coordinates.longitude === 0 ||
+        Math.abs(coordinates.latitude) > 90 ||
+        Math.abs(coordinates.longitude) > 180 ||
+        !coordinates.latitude ||
+        !coordinates.longitude) {
+      return false;
+    }
+    return true;
+  };
+
   const onLoginPress = async () => {
     if (email.trim() == "") {
       setErrorMessage("Enter email to continue");
@@ -136,27 +152,18 @@ export default function Login(props) {
       try {
         setIsLoading(true);
 
-        // Optional: Test network connectivity first (only in development)
-        // Uncomment the lines below if you want to test connectivity before every login
-        // console.log("🔍 Testing backend connection first...");
-        // const networkTest = await testBackendConnection();
-        // if (!networkTest.summary.allPassed) {
-        //   setErrorMessage("Cannot reach backend. Check network settings.");
-        //   setShowErrorMessage(true);
-        //   setIsLoading(false);
-        //   Vibration.vibrate(errorVibrationPattern);
-        //   return;
-        // }
-
         let reqObj = {
           email: email,
           password: password,
         };
-        // Send as JSON, not FormData
+        
         let response = await apiHandler.loginUser(reqObj);
         console.log("Login Response:", response);
-        setIsLoading(false);
+        
         if (response?.success) {
+          const token = response?.token;
+          await helperFunctions.storeAccessToken(token);
+          
           AsyncStorage.setItem("isReviewPosted", "false");
           AsyncStorage.setItem("swipeValue", "0");
 
@@ -165,213 +172,20 @@ export default function Login(props) {
             await AsyncStorage.setItem("savedPassword", password);
           }
 
-          try {
-            // Get location first
-            console.log("📍 Getting user location...");
-            await new Promise((resolve) => {
-              Geolocation.getCurrentPosition(
-                (info) => {
-                  const coordinates = {
-                    latitude: info.coords.latitude,
-                    longitude: info.coords.longitude,
-                  };
-                  console.log("✅ Got location:", coordinates);
-                  dispatch(setLocation(coordinates));
-                  resolve();
-                },
-                (err) => {
-                  console.log("⚠️ Location error, using default:", err);
-                  // Use default location if permission denied
-                  const defaultLocation = {
-                    latitude: 37.7749,
-                    longitude: -122.4194,
-                  };
-                  dispatch(setLocation(defaultLocation));
-                  resolve();
-                },
-                {
-                  enableHighAccuracy: false,
-                  timeout: 5000,
-                  maximumAge: 3600000,
-                }
-              );
-            });
+          // 1. START BACKGROUND DATA FETCHING (Parallel) - Await to ensure Redux is ready
+          await fetchUserDataInBackground(token);
+          
+          // 2. START INTERACTIVE LOCATION FETCHING
+          await getLoginLocation();
 
-            // Load all user data first
-            let token = response?.token;
-            await helperFunctions.storeAccessToken(token);
+          // 3. SET TOKEN LAST to unlock app (Home screen will mount now)
+          dispatch(setAccessToken(token));
 
-            let categories = await apiHandler.getAllCategories(token);
-            let adminAdvertisements =
-              await apiHandler.getAdminPanelAdvertisements(token);
-
-            // Session API is optional - if it fails, use default session
-            let session = null;
-            try {
-              const sessionData = {
-                type: "login",
-                device_type: Platform.OS || "unknown",
-              };
-              session = await apiHandler.userSessionAPI(token, sessionData);
-            } catch (sessionError) {
-              console.log("Session API failed, using default:", sessionError);
-              session = { id: 0 }; // Default session
-            }
-
-            let userData = await apiHandler.getUserData(token);
-            // Handle case where getUserData returns null (user not found)
-            if (!userData) {
-              throw new Error("User profile not found");
-            }
-            let userSavedAppSettings = userData.app_settings || {};
-            // Default to light mode (white background) for new users
-            let isDarkMode = userSavedAppSettings.dark_mode === "true";
-            let isToggleDarkMode =
-              userSavedAppSettings.toggledark_mode === "true";
-            let isVibrationEnabled =
-              userSavedAppSettings.vibrations !== "false";
-            let likedInAppPosts = await apiHandler.getFavoriteRestaurants(
-              token
-            );
-            let googlePosts = await apiHandler.getGoogleLikedPosts(token);
-            let favoriteRestaurants = await apiHandler.getLikedRestaurants(
-              token
-            );
-
-            console.log(
-              "🍽️ Raw favorite restaurants from API:",
-              favoriteRestaurants
-            );
-
-            // Map with safety check - Backend returns { id, name, google_photo_reference, ... }
-            favoriteRestaurants = (favoriteRestaurants || [])
-              .map((item, index) => {
-                console.log(`🔍 Processing restaurant #${index}:`, {
-                  name: item.name,
-                  google_photo_reference: item.google_photo_reference,
-                  google_place_id: item.google_place_id,
-                  id: item.id,
-                });
-
-                // Construct Google image URL if photo reference exists
-                let restaurantImage = null;
-                if (item.google_photo_reference) {
-                  restaurantImage = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${item.google_photo_reference}&key=AIzaSyCLb-WobrzT3gvpXDLkNYPWbIpd30bxKLQ`;
-                  console.log(
-                    `✅ Image URL created:`,
-                    restaurantImage.substring(0, 80) + "..."
-                  );
-                } else if (item.image) {
-                  restaurantImage = item.image;
-                  console.log(`✅ Using item.image:`, restaurantImage);
-                } else {
-                  console.log(
-                    `❌ No photo_reference or image found for:`,
-                    item.name
-                  );
-                }
-
-                // Use google_place_id as restaurant_id for proper navigation
-                const restaurantId =
-                  item.google_place_id || item.restaurant_id || item.id;
-
-                return {
-                  restaurantName:
-                    item.name || item.restaurant_name || "Unknown Restaurant",
-                  restaurantImage: restaurantImage,
-                  restaurant_id: restaurantId,
-                  google_place_id: item.google_place_id,
-                };
-              })
-              .filter((item) => {
-                // Filter out entries with incomplete/invalid data
-                const hasValidId = item.restaurant_id && item.google_place_id;
-                const hasValidName =
-                  item.restaurantName &&
-                  item.restaurantName !== "Unknown Restaurant";
-
-                if (!hasValidId || !hasValidName) {
-                  console.log("⚠️ Skipping invalid restaurant:", {
-                    name: item.restaurantName,
-                    id: item.restaurant_id,
-                    google_place_id: item.google_place_id,
-                  });
-                  return false;
-                }
-                return true;
-              });
-
-            console.log("🍽️ Mapped favorite restaurants:", favoriteRestaurants);
-
-            // ✅ Load user preferences from database FIRST (before setting token)
-            const userSettings = userData?.user_settings;
-            let hasLoadedCategories = false;
-
-            if (userSettings) {
-              console.log(
-                "📊 Loading user preferences from database:",
-                userSettings
-              );
-
-              // Load saved radius
-              if (userSettings.search_radius) {
-                dispatch(savePostsRadius(userSettings.search_radius));
-                console.log("✅ Loaded radius:", userSettings.search_radius);
-              }
-
-              // Load saved categories
-              if (
-                userSettings.favorite_categories &&
-                userSettings.favorite_categories.length > 0
-              ) {
-                // Map category IDs to full category objects
-                const savedCategories = categories.filter((cat) =>
-                  userSettings.favorite_categories.includes(cat.id)
-                );
-                if (savedCategories.length > 0) {
-                  dispatch(updateFoodCategories(savedCategories));
-                  console.log("✅ Loaded categories:", savedCategories);
-                  hasLoadedCategories = true;
-                }
-              }
-            }
-
-            // ✅ If user has no saved categories, use ALL categories as default
-            if (!hasLoadedCategories && categories && categories.length > 0) {
-              console.log(
-                "📊 No saved categories, loading ALL categories as default"
-              );
-              dispatch(updateFoodCategories(categories));
-            }
-
-            // Dispatch all data to Redux
-            dispatch(setCurrentSessionId(session?.id || 0));
-            dispatch(setAdminAdvertisements(adminAdvertisements || []));
-            dispatch(setFoodCategories(categories || []));
-            dispatch(setLikedPosts(likedInAppPosts || []));
-            dispatch(setFavouritePlaces(googlePosts || []));
-            dispatch(setFavoriteRestaurants(favoriteRestaurants || []));
-            dispatch(toggleDarkMode(isDarkMode));
-            dispatch(enableDarkModeAutoUpdate(isToggleDarkMode));
-            dispatch(updateVibrationSettings(isVibrationEnabled));
-            dispatch(setUserData(userData));
-
-            // ⚠️ IMPORTANT: Set token and trigger post loading TOGETHER at the end
-            dispatch(setAccessToken(token));
-            dispatch(setLoadNewPosts(true)); // ✅ This will trigger home screen to load posts
-
-            // Show success ONLY after all data loaded successfully
-            setShowCustomToast(true);
-            Vibration.vibrate(userSuccessPattern);
-          } catch (dataError) {
-            console.log("Error loading user data after login:", dataError);
-            setErrorMessage(
-              "Login successful but failed to load user data. Please try again."
-            );
-            setShowErrorMessage(true);
-            Vibration.vibrate(errorVibrationPattern);
-          }
+          setIsLoading(false);
+          setShowCustomToast(true);
+          Vibration.vibrate(userSuccessPattern);
         } else {
+          setIsLoading(false);
           let message = response?.message || response?.error || "Login failed";
           setErrorMessage(message);
           setShowErrorMessage(true);
@@ -384,6 +198,204 @@ export default function Login(props) {
         Vibration.vibrate(errorVibrationPattern);
       }
     }
+  };
+
+  const getLoginLocation = () => {
+    return new Promise(async (resolve) => {
+      // 1. Check for cached location first
+      const cachedLocation = await helperFunctions.getCachedLocation();
+      if (cachedLocation && validateLocation(cachedLocation)) {
+        console.log("✅ Login: Found cached location:", cachedLocation);
+        dispatch(setLocation(cachedLocation));
+        resolve();
+        return; // Already resolved, background fetch will happen in AppNavigation
+      }
+
+      const tryGetLocation = (useHighAccuracy = true) => {
+        console.log(`📍 Login: Attempting location fetch (HighAccuracy: ${useHighAccuracy})`);
+        
+        const timeoutId = setTimeout(() => {
+          console.log("⏰ Login: Location fetch timed out, trying low accuracy...");
+          if (useHighAccuracy) {
+            tryGetLocation(false);
+          } else {
+            showLocationErrorAlert("We couldn't fetch your location. Please check your GPS settings and try again.", () => tryGetLocation(true));
+          }
+        }, 10000);
+
+        Geolocation.getCurrentPosition(
+          (info) => {
+            clearTimeout(timeoutId);
+            const coordinates = {
+              latitude: info.coords.latitude,
+              longitude: info.coords.longitude,
+            };
+            
+            if (validateLocation(coordinates)) {
+              console.log("✅ Got location:", coordinates);
+              dispatch(setLocation(coordinates));
+              helperFunctions.saveCachedLocation(coordinates);
+              resolve();
+            } else {
+              showLocationErrorAlert("Invalid location received. Try again?", () => tryGetLocation(true));
+            }
+          },
+          (err) => {
+            clearTimeout(timeoutId);
+            if (useHighAccuracy) {
+              console.log("🔄 Login: High accuracy failed, retrying with low accuracy...");
+              tryGetLocation(false);
+            } else {
+              if (err.code === 1) {
+                showPermissionDeniedAlert(() => tryGetLocation(true));
+              } else {
+                showLocationErrorAlert("Failed to fetch location. Try again?", () => tryGetLocation(true));
+              }
+            }
+          },
+          {
+            enableHighAccuracy: useHighAccuracy,
+            timeout: 10000,
+            maximumAge: 0,
+          }
+        );
+      };
+
+      const showPermissionDeniedAlert = (retryFn) => {
+        Alert.alert(
+          "Location Required",
+          "Nearby restaurants require location permission. Please enable it in settings to continue.",
+          [
+            { text: "Retry", onPress: () => retryFn() },
+            { text: "Open Settings", onPress: () => Linking.openSettings() },
+          ],
+          { cancelable: false }
+        );
+      };
+
+      const showLocationErrorAlert = (message, retryFn) => {
+        Alert.alert(
+          "Location Error",
+          message,
+          [
+            { text: "Retry", onPress: () => retryFn() },
+          ],
+          { cancelable: false }
+        );
+      };
+
+      tryGetLocation(true);
+    });
+  };
+
+  const fetchUserDataInBackground = async (token) => {
+    console.log("🔄 Starting background data fetch...");
+    
+    // Fetch all supplemental data in parallel
+    const results = await Promise.allSettled([
+      apiHandler.getAllCategories(token),
+      apiHandler.getAdminPanelAdvertisements(token),
+      apiHandler.getUserData(token),
+      apiHandler.getFavoriteRestaurants(token),
+      apiHandler.getGoogleLikedPosts(token),
+      apiHandler.getLikedRestaurants(token),
+      // Optional session API
+      apiHandler.userSessionAPI(token, { type: "login", device_type: Platform.OS || "unknown" }).catch(e => ({ id: 0 }))
+    ]);
+
+    const [
+      categoriesRes,
+      adsRes,
+      userDataRes,
+      favRes,
+      googlePostsRes,
+      likedRestaurantsRes,
+      sessionRes
+    ] = results;
+
+    // Process Categories
+    if (categoriesRes.status === 'fulfilled') {
+      const categories = categoriesRes.value || [];
+      dispatch(setFoodCategories(categories));
+    }
+
+    // Process Ads
+    if (adsRes.status === 'fulfilled') {
+      dispatch(setAdminAdvertisements(adsRes.value || []));
+    }
+
+    // Process User Data & Settings
+    if (userDataRes.status === 'fulfilled' && userDataRes.value) {
+      const userData = userDataRes.value;
+      dispatch(setUserData(userData));
+      
+      const userSavedAppSettings = userData.app_settings || {};
+      dispatch(toggleDarkMode(userSavedAppSettings.dark_mode === "true"));
+      dispatch(enableDarkModeAutoUpdate(userSavedAppSettings.toggledark_mode === "true"));
+      dispatch(updateVibrationSettings(userSavedAppSettings.vibrations !== "false"));
+
+      // Process User Preferences (Radius/Categories)
+      const userSettings = userData?.user_settings;
+      let hasLoadedCategories = false;
+
+      if (userSettings) {
+        if (userSettings.search_radius) {
+          const radiusInMiles = Math.round(Number(userSettings.search_radius) * 0.621371);
+          dispatch(savePostsRadius(radiusInMiles));
+        }
+
+        if (userSettings.favorite_categories?.length > 0) {
+          const categories = categoriesRes.status === 'fulfilled' ? categoriesRes.value : [];
+          const savedCategories = categories.filter((cat) =>
+            userSettings.favorite_categories.includes(cat.id)
+          );
+          if (savedCategories.length > 0) {
+            dispatch(updateFoodCategories(savedCategories));
+            hasLoadedCategories = true;
+          }
+        }
+      }
+
+      // Default categories if none saved
+      if (!hasLoadedCategories) {
+        const categories = categoriesRes.status === 'fulfilled' ? categoriesRes.value : [];
+        if (categories.length > 0) dispatch(updateFoodCategories(categories));
+      }
+    }
+
+    // Process Favorites/Likes
+    if (favRes.status === 'fulfilled') dispatch(setLikedPosts(favRes.value || []));
+    if (googlePostsRes.status === 'fulfilled') dispatch(setFavouritePlaces(googlePostsRes.value || []));
+    
+    if (likedRestaurantsRes.status === 'fulfilled') {
+      const favoriteRestaurants = (likedRestaurantsRes.value || [])
+        .map((item) => {
+          let restaurantImage = item.google_photo_reference 
+            ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${item.google_photo_reference}&key=AIzaSyCLb-WobrzT3gvpXDLkNYPWbIpd30bxKLQ`
+            : item.image || null;
+
+          const restaurantId = item.google_place_id || item.restaurant_id || item.id;
+
+          return {
+            restaurantName: item.name || item.restaurant_name || "Unknown Restaurant",
+            restaurantImage,
+            restaurant_id: restaurantId,
+            google_place_id: item.google_place_id,
+          };
+        })
+        .filter((item) => item.restaurant_id && item.google_place_id);
+      
+      dispatch(setFavoriteRestaurants(favoriteRestaurants));
+    }
+
+    // Process Session
+    if (sessionRes.status === 'fulfilled') {
+      dispatch(setCurrentSessionId(sessionRes.value?.id || 0));
+    }
+
+    // Finally trigger post loading
+    dispatch(setLoadNewPosts(true));
+    console.log("✅ Background data fetch completed");
   };
 
   return (
