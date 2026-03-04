@@ -102,6 +102,8 @@ export default function Search(props) {
   const [displayedFoodCategories, setDisplayedFoodCategories] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loaderTitle, setLoaderTitle] = useState("");
+  const [isFetchingCategories, setIsFetchingCategories] = useState(false);
+  const [categoriesLoadFailed, setCategoriesLoadFailed] = useState(false);
   const [selectedRestaurant, setSelectedRestaurant] = useState("");
   const [selectedRestaurantID, setSelectedRestaurantID] = useState("");
   const [showRestaurantSearch, setShowRestaurantSearch] = useState(false);
@@ -140,36 +142,8 @@ export default function Search(props) {
   }, [isFocused, isLoading]);
 
   const getSavedCategories = async () => {
-    setIsLoading(true);
-    setLoaderTitle("Fetching saved preferences");
+    // Load local settings immediately (from Redux - instant, no API call)
     try {
-      // If categories are not loaded in Redux, fetch them from API
-      if (
-        !foodCategories ||
-        !Array.isArray(foodCategories) ||
-        foodCategories.length === 0
-      ) {
-        console.log("📊 Categories not in Redux, fetching from API...");
-        let categories = await apiHandler.getAllCategories(accessToken);
-        if (categories && categories.length > 0) {
-          dispatch(setFoodCategories(categories));
-          // Limit to 12 broad categories as requested
-          let condensedCategories = categories.slice(0, 12);
-          let displayedData = helperFunctions.transformArray(condensedCategories);
-          setDisplayedFoodCategories(displayedData);
-          console.log("✅ Categories fetched and loaded:", categories.length);
-        } else {
-          console.log("⚠️ No categories found");
-          setDisplayedFoodCategories([]);
-        }
-      } else {
-        // Categories already in Redux, use them
-        // Limit to 12 broad categories as requested
-        let condensedCategories = foodCategories.slice(0, 12);
-        let displayedData = helperFunctions.transformArray(condensedCategories);
-        setDisplayedFoodCategories(displayedData);
-      }
-
       if (
         userData &&
         userData.search_randomly &&
@@ -181,10 +155,8 @@ export default function Search(props) {
 
       // Load radius from Redux (already loaded by SplashScreen) or from user settings
       if (savedPostsRadius && !isNaN(Number(savedPostsRadius)) && Number(savedPostsRadius) > 0) {
-        // Use radius from Redux (already in miles)
         setDistance(Number(savedPostsRadius));
       } else if (userData?.user_settings?.search_radius) {
-        // Load from user_settings (backend stores in km, convert to miles)
         const radiusInKm = parseFloat(userData.user_settings.search_radius);
         if (!isNaN(radiusInKm)) {
           const radiusInMiles = Math.round(radiusInKm * 0.621371);
@@ -192,7 +164,6 @@ export default function Search(props) {
           dispatch(savePostsRadius(radiusInMiles));
         }
       } else if (userData && userData.radius) {
-        // Legacy field fallback
         const radius = parseInt(userData.radius);
         if (!isNaN(radius) && radius > 0) {
           const roundedRadius = Math.round(radius);
@@ -200,7 +171,6 @@ export default function Search(props) {
           dispatch(savePostsRadius(roundedRadius));
         }
       } else {
-        // Default to 20 miles
         setDistance(20);
         dispatch(savePostsRadius(20));
       }
@@ -217,11 +187,47 @@ export default function Search(props) {
         setSelectedCategories(arrCurrentFoodCategories);
       }
     } catch (error) {
-      console.log("Error in getSavedCategories:", error);
-      setErrorMessage("Network Error");
-      setShowErrorMessage(true);
+      console.log("Error loading local settings:", error);
     }
-    setIsLoading(false);
+
+    // Fetch categories separately (non-blocking - inline loading in categories area)
+    await fetchCategories();
+  };
+
+  const fetchCategories = async () => {
+    // If categories are already in Redux, use them immediately
+    if (foodCategories && Array.isArray(foodCategories) && foodCategories.length > 0) {
+      let condensedCategories = foodCategories.slice(0, 12);
+      let displayedData = helperFunctions.transformArray(condensedCategories);
+      setDisplayedFoodCategories(displayedData);
+      setCategoriesLoadFailed(false);
+      return;
+    }
+
+    // Need to fetch from API - show inline loading (NOT blocking modal)
+    setIsFetchingCategories(true);
+    setCategoriesLoadFailed(false);
+    try {
+      console.log("📊 Categories not in Redux, fetching from API...");
+      let categories = await apiHandler.getAllCategories(accessToken);
+      if (categories && categories.length > 0) {
+        dispatch(setFoodCategories(categories));
+        let condensedCategories = categories.slice(0, 12);
+        let displayedData = helperFunctions.transformArray(condensedCategories);
+        setDisplayedFoodCategories(displayedData);
+        setCategoriesLoadFailed(false);
+        console.log("✅ Categories fetched and loaded:", categories.length);
+      } else {
+        console.log("⚠️ No categories found");
+        setDisplayedFoodCategories([]);
+        setCategoriesLoadFailed(true);
+      }
+    } catch (error) {
+      console.log("Error fetching categories:", error);
+      setCategoriesLoadFailed(true);
+    } finally {
+      setIsFetchingCategories(false);
+    }
   };
 
   const onRandomPress = () => {
@@ -837,7 +843,31 @@ export default function Search(props) {
                       alignItems: "center",
                     }}
                   >
-                    {/* Empty state - only shows when not searching and no users found */}
+                    <Ionicons
+                      name="search-outline"
+                      style={{
+                        fontSize: moderateScale(40),
+                        color: isDarkModeActive ? colors.lightGrey : colors.grey,
+                        marginBottom: moderateScale(10),
+                      }}
+                    />
+                    <Text
+                      style={commonStyles.textWhite(16, {
+                        color: currentThemeSecondaryColor,
+                        textAlign: "center",
+                      })}
+                    >
+                      No users found for "{searchedName}"
+                    </Text>
+                    <Text
+                      style={commonStyles.textWhite(13, {
+                        color: isDarkModeActive ? colors.lightGrey : colors.darkGrey,
+                        textAlign: "center",
+                        marginTop: moderateScale(6),
+                      })}
+                    >
+                      Try a different search term
+                    </Text>
                   </View>
                 )
               );
@@ -1255,14 +1285,62 @@ export default function Search(props) {
                   alignItems: "center",
                 }}
               >
-                <Text
-                  style={commonStyles.textWhite(16, {
-                    color: currentThemeSecondaryColor,
-                    textAlign: "center",
-                  })}
-                >
-                  Loading categories...
-                </Text>
+                {isFetchingCategories ? (
+                  <>
+                    <ActivityIndicator size={"large"} color={colors.appPrimary} />
+                    <Text
+                      style={commonStyles.textWhite(14, {
+                        color: currentThemeSecondaryColor,
+                        textAlign: "center",
+                        marginTop: moderateScale(10),
+                      })}
+                    >
+                      Loading categories...
+                    </Text>
+                  </>
+                ) : categoriesLoadFailed ? (
+                  <>
+                    <Ionicons
+                      name="cloud-offline-outline"
+                      style={{
+                        fontSize: moderateScale(40),
+                        color: isDarkModeActive ? colors.lightGrey : colors.grey,
+                        marginBottom: moderateScale(8),
+                      }}
+                    />
+                    <Text
+                      style={commonStyles.textWhite(14, {
+                        color: currentThemeSecondaryColor,
+                        textAlign: "center",
+                      })}
+                    >
+                      Could not load categories
+                    </Text>
+                    <TouchableOpacity
+                      onPress={fetchCategories}
+                      style={{
+                        marginTop: moderateScale(12),
+                        backgroundColor: colors.appPrimary,
+                        paddingHorizontal: moderateScale(20),
+                        paddingVertical: moderateScale(8),
+                        borderRadius: moderateScale(20),
+                      }}
+                    >
+                      <Text style={commonStyles.textWhite(14, { color: colors.white })}>
+                        Tap to Retry
+                      </Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <Text
+                    style={commonStyles.textWhite(14, {
+                      color: currentThemeSecondaryColor,
+                      textAlign: "center",
+                    })}
+                  >
+                    No categories available
+                  </Text>
+                )}
               </View>
             )}
           </View>

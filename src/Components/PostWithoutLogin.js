@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Image,
   ImageBackground,
@@ -126,7 +127,10 @@ export default function PostWithoutLogin() {
   const [currentPostImageIndex, setCurrentPostImageIndex] = useState(0);
   const [componentHeight, setComponentHeight] = useState(windowHeight);
   const [loadingMorePosts, setLoadingMorePosts] = useState(false);
+  const [allDataLoaded, setAllDataLoaded] = useState(false);
+  const [showEndMessage, setShowEndMessage] = useState(false);
   const [nextPageToken, setNextPageToken] = useState(null);
+  const endMessageTimerRef = useRef(null);
   const [hasLoadedCache, setHasLoadedCache] = useState(false);
   const POSTS_CACHE_KEY_GUEST = "cachedPosts_guest";
   const PAGE_SIZE = 9;
@@ -201,7 +205,7 @@ export default function PostWithoutLogin() {
 
     if (isLoadMore) {
       if (!nextPageToken) {
-        console.log("ℹ️ No next page token available for load-more");
+        setAllDataLoaded(true);
         return;
       }
       if (loadingMorePosts) {
@@ -210,15 +214,11 @@ export default function PostWithoutLogin() {
       setLoadingMorePosts(true);
     } else {
       setIsLoading(true);
+      setAllDataLoaded(false);
+      setShowEndMessage(false);
     }
 
     try {
-      console.log("📍 PostWithoutLogin: Fetching posts", {
-        mode: isLoadMore ? "loadMore" : "initial",
-        latitude: userLocation.latitude,
-        longitude: userLocation.longitude,
-      });
-
       const reqObj = {
         latitude: userLocation.latitude,
         longitude: userLocation.longitude,
@@ -230,27 +230,13 @@ export default function PostWithoutLogin() {
       );
       const rawPosts = (response?.posts || []).filter(Boolean);
       
-      // Log posts data for debugging image issue
       if (rawPosts.length > 0 && !isLoadMore) {
-        console.log(`📊 PostWithoutLogin: Received ${rawPosts.length} posts from API`);
-        const firstPost = rawPosts[0];
-        const imageUrl = firstPost?.restaurantImage 
-          ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=700&photo_reference=${firstPost.restaurantImage}&key=${GOOGLE_API_KEY}`
-          : 'NO IMAGE';
-        console.log(`📊 First post sample:`, {
-          restaurantName: firstPost?.restaurantName,
-          restaurantImage: firstPost?.restaurantImage ? firstPost.restaurantImage.substring(0, 50) + '...' : 'MISSING',
-          restaurantImageType: typeof firstPost?.restaurantImage,
-          restaurantImageLength: firstPost?.restaurantImage?.length,
-          restaurant_id: firstPost?.restaurant_id,
-          fullImageUrl: imageUrl.substring(0, 120) + '...',
-        });
+        console.log(`PostWithoutLogin: Initial load - ${rawPosts.length} posts`);
       }
       
       const limitedPosts = rawPosts.slice(0, PAGE_SIZE);
 
       if (limitedPosts.length === 0 && !isLoadMore && rawPosts.length === 0) {
-        console.log("⚠️ PostWithoutLogin: No posts returned from API");
         
         // ✅ Only show blocking alert if we don't have any existing posts visible
         if (allPostsRef.current.length === 0) {
@@ -274,7 +260,6 @@ export default function PostWithoutLogin() {
           // If we already have posts, just show a non-blocking toast
           setIsLoading(false);
           // Toast is handled by SinglePostComponent usually but here we might need one or just silent fail
-          console.log("⏸️ PostWithoutLogin: No new posts, but keeping existing ones.");
         }
         return;
       }
@@ -311,16 +296,20 @@ export default function PostWithoutLogin() {
         if (newNextPageToken) {
           // More pages available - keep ref at old total so next load more can trigger
           // Ref was set to old total in scroll handler, don't change it
-          console.log(`✅ Load more completed: new total=${uniquePosts.length}, nextPageToken exists, ref stays at old value for next trigger`);
+          // More pages available - ref stays at old value for next trigger
         } else {
-          // No more pages - set ref to new total (matches SinglePostComponent line 810)
+          // No more pages - set ref to new total
           lastLoadMoreLengthRefGuest.current = uniquePosts.length;
-          console.log(`✅ Load more completed: new total=${uniquePosts.length}, no more pages, lastLoad=${lastLoadMoreLengthRefGuest.current}`);
+          setAllDataLoaded(true);
+          console.log(`Guest feed: All pages loaded, total=${uniquePosts.length}`);
         }
       } else {
         // Initial load - keep ref at 0 (will be set when load more triggers)
         lastLoadMoreLengthRefGuest.current = 0;
-        console.log(`✅ Initial load completed: total=${uniquePosts.length}, lastLoad reset to 0`);
+        // If initial load returned no nextPageToken, all data is already loaded
+        if (!newNextPageToken) {
+          setAllDataLoaded(true);
+        }
       }
 
       if (!isLoadMore && uniquePosts.length > 0) {
@@ -400,26 +389,18 @@ export default function PostWithoutLogin() {
   useEffect(() => {
     const hydrateCache = async () => {
       if (allPosts.length === 0 && !hasLoadedCache) {
-        console.log("📦 PostWithoutLogin: Loading cache on mount...");
         const cacheResult = await helperFunctions.loadCachedPosts(
           POSTS_CACHE_KEY_GUEST
         );
         if (cacheResult.posts && cacheResult.posts.length > 0) {
-          console.log(`✅ PostWithoutLogin: Loaded ${cacheResult.posts.length} cached posts`);
           dispatch(setPostsWithoutLogin(cacheResult.posts));
           if (cacheResult.nextPageToken) {
             setNextPageToken(cacheResult.nextPageToken);
           }
-          // Keep ref at 0 when loading from cache (will be set when load more triggers)
           lastLoadMoreLengthRefGuest.current = 0;
-          console.log(`✅ Cache loaded: lastLoadMoreLengthRefGuest reset to 0`);
           setHasLoadedCache(true);
-          // Set loadNewPosts to false to prevent immediate network request
           dispatch(setLoadNewPosts(false));
         } else {
-          console.log("⚠️ PostWithoutLogin: No cached posts found");
-          // Only show loader if we have to fetch fresh data and have no cache
-          setIsLoading(true);
           lastLoadMoreLengthRefGuest.current = 0;
           setHasLoadedCache(true);
         }
@@ -443,38 +424,41 @@ export default function PostWithoutLogin() {
     // If cache was loaded, fetch fresh data in background
     // If no cache, fetch immediately
     if (loadNewPosts || (allPosts.length === 0 && hasLoadedCache)) {
-      console.log("🔄 PostWithoutLogin: Fetching fresh posts from API");
       getPostsWithoutLogin(false);
     }
   }, [userLocation, searchingForQuickBites, loadNewPosts, accessToken, hasLoadedCache]);
 
+  // Track previous accessToken to detect logout transition
+  const prevAccessTokenRef = useRef(accessToken);
   useEffect(() => {
-    if (!accessToken && userLocation && hasLoadedCache) {
-      console.log("🔄 User logged out, checking if posts need reload");
+    const wasLoggedIn = !!prevAccessTokenRef.current;
+    const isLoggedOut = !accessToken;
+    prevAccessTokenRef.current = accessToken;
+
+    // Only run on actual logout transition (was logged in, now logged out)
+    if (wasLoggedIn && isLoggedOut && userLocation && hasLoadedCache) {
+      console.log("🔄 User logged out, resetting guest feed");
       setNextPageToken(null);
       lastLoadMoreLengthRefGuest.current = 0;
-      // If no posts, reload cache or fetch fresh
+      setAllDataLoaded(false);
       if (allPosts.length === 0) {
         const reloadCache = async () => {
           const cacheResult = await helperFunctions.loadCachedPosts(
             POSTS_CACHE_KEY_GUEST
           );
           if (cacheResult.posts && cacheResult.posts.length > 0) {
-            console.log(`✅ PostWithoutLogin: Reloaded ${cacheResult.posts.length} cached posts after logout`);
             dispatch(setPostsWithoutLogin(cacheResult.posts));
             if (cacheResult.nextPageToken) {
               setNextPageToken(cacheResult.nextPageToken);
             }
           } else {
-            // No cache, fetch fresh data
-            console.log("⚠️ No cache found after logout, fetching fresh posts");
             getPostsWithoutLogin(false);
           }
         };
         reloadCache();
       }
     }
-  }, [accessToken, userLocation, hasLoadedCache]);
+  }, [accessToken]);
 
   useEffect(() => {
     if (
@@ -486,6 +470,15 @@ export default function PostWithoutLogin() {
       searchQuickBitesPlaces();
     }
   }, [searchingForQuickBites, userLocation]);
+
+  // Cleanup end message timer on unmount
+  useEffect(() => {
+    return () => {
+      if (endMessageTimerRef.current) {
+        clearTimeout(endMessageTimerRef.current);
+      }
+    };
+  }, []);
 
   const onPostSideTap = (side, item) => {
     const images = item.restaurantImages || [item.restaurantImage];
@@ -638,7 +631,6 @@ export default function PostWithoutLogin() {
           let userData = response.user || (await apiHandler.getUserData(token));
           // Handle case where getUserData returns null (user not found)
           if (!userData) {
-            console.log("⚠️ User data not found, using defaults");
             userData = {}; // Use empty object to prevent errors
           }
 
@@ -678,7 +670,6 @@ export default function PostWithoutLogin() {
             if (userSettings.search_radius) {
               const radiusInMiles = Number(userSettings.search_radius) * 0.621371;
               dispatch(savePostsRadius(radiusInMiles));
-              console.log("✅ Loaded radius:", radiusInMiles, "miles");
             }
 
             if (
@@ -943,7 +934,6 @@ export default function PostWithoutLogin() {
           let userData = response.user || (await apiHandler.getUserData(token));
           // Handle case where getUserData returns null (user not found)
           if (!userData) {
-            console.log("⚠️ User data not found, using defaults");
             userData = {}; // Use empty object to prevent errors
           }
 
@@ -1002,7 +992,6 @@ export default function PostWithoutLogin() {
             if (userSettings.search_radius) {
               const radiusInMiles = Number(userSettings.search_radius) * 0.621371;
               dispatch(savePostsRadius(radiusInMiles));
-              console.log("✅ Loaded radius:", radiusInMiles, "miles");
             }
 
             // Load saved categories
@@ -1041,7 +1030,6 @@ export default function PostWithoutLogin() {
           // This ensures SinglePostComponent starts with correct preferences
           dispatch(setAccessToken(token));
           dispatch(setLoadNewPosts(true)); // ✅ Trigger home screen to load posts
-          console.log("✅ Access token set successfully, closing modal");
           dispatch(showHideForceLoginModal(false));
           setIsLoading(false);
         })
@@ -1101,11 +1089,11 @@ export default function PostWithoutLogin() {
   };
 
   const onCommentPress = (item) => {
-    // Allow viewing comments - navigate to restaurant details
-    // Login check will happen when trying to write comment
-    navigation.navigate(navigationStrings.ViewRestaurant, {
-      restaurant_id: item.restaurant_id,
-    });
+    // Comments require login - show login modal for guest users
+    if (!accessToken) {
+      dispatch(showHideForceLoginModal(true));
+      return;
+    }
   };
 
   const onRestaurantImagePress = (item) => {
@@ -1188,30 +1176,8 @@ export default function PostWithoutLogin() {
               urlLength: fullUrl.length,
             });
           }}
-          onLoad={() => {
-            if (index === 0) {
-              console.log(
-                "✅ ImageBackground loaded successfully for first post"
-              );
-              console.log(
-                "✅ Image URL:",
-                typeof imageSource === "object" && imageSource.uri
-                  ? imageSource.uri.substring(0, 100)
-                  : "local image"
-              );
-            }
-          }}
-          onLoadStart={() => {
-            if (index === 0) {
-              console.log("🔄 ImageBackground loading started");
-              console.log(
-                "🔄 Loading URL:",
-                typeof imageSource === "object" && imageSource.uri
-                  ? imageSource.uri.substring(0, 150)
-                  : "local image"
-              );
-            }
-          }}
+          onLoad={() => {}}
+          onLoadStart={() => {}}
         >
           <View style={styles.sideTapContainer}>
             <TouchableOpacity
@@ -1262,16 +1228,8 @@ export default function PostWithoutLogin() {
                         item?.restaurantImage?.length
                       );
                     }}
-                    onLoad={() => {
-                      if (index === 0) {
-                        console.log("✅ Small Image loaded successfully");
-                      }
-                    }}
-                    onLoadStart={() => {
-                      if (index === 0) {
-                        console.log("🔄 Small Image loading started");
-                      }
-                    }}
+                    onLoad={() => {}}
+                    onLoadStart={() => {}}
                   />
                 </TouchableOpacity>
                 <PressableImage
@@ -1339,6 +1297,7 @@ export default function PostWithoutLogin() {
                     </Text>
                   </View>
                 )}
+                {/* Price display commented out for now
                 {item &&
                 item.restaurantPrice !== null &&
                 item.restaurantPrice !== undefined &&
@@ -1364,10 +1323,10 @@ export default function PostWithoutLogin() {
                         color: colors.white,
                       })}
                     >
-                      $ {item.restaurantPrice}
+                      {"$".repeat(item.restaurantPrice)}
                     </Text>
                   </View>
-                ) : null}
+                ) : null} */}
                 <Text
                   numberOfLines={4}
                   style={commonStyles.textWhite(14, {
@@ -1429,43 +1388,40 @@ export default function PostWithoutLogin() {
           setCurrentPostImageIndex(0);
           const totalPosts = allPosts.length;
           const remainingPosts = totalPosts - currentIndex - 1;
-          
-          console.log(`📍 PostWithoutLogin Scroll: Index ${currentIndex} of ${totalPosts} (${remainingPosts} remaining)`);
-          console.log(`📍 Load more check:`, {
-            totalPosts,
-            remainingPosts,
-            loadingMorePosts,
-            hasNextPageToken: !!nextPageToken,
-            lastLoadLength: lastLoadMoreLengthRefGuest.current,
-          });
-          
-          // Match SinglePostComponent logic: trigger when at the end
-          // For pagination with nextPageToken: if nextPageToken exists, allow load more
-          // The ref check prevents duplicate calls during same scroll event
-          // If ref === totalPosts but nextPageToken exists, it means we just loaded but more is available
+          const isNearEnd = totalPosts > 0 && remainingPosts <= 2;
+          const isAtEnd = totalPosts > 0 && remainingPosts <= 0;
+
+          // Try to load more when near the end (2 posts before last)
           const hasMorePages = nextPageToken !== null && nextPageToken !== undefined;
-          const shouldTrigger = totalPosts > 0 &&
-            remainingPosts <= 0 &&
+          if (
+            isNearEnd &&
             !loadingMorePosts &&
             hasMorePages &&
-            lastLoadMoreLengthRefGuest.current !== totalPosts;
-          
-          if (shouldTrigger) {
-            console.log("🚀 PostWithoutLogin: Reached end of list, loading more posts...");
-            // Set ref BEFORE calling to prevent duplicate calls (matches SinglePostComponent line 2341)
+            lastLoadMoreLengthRefGuest.current !== totalPosts
+          ) {
+            console.log(`🔄 Guest load-more triggered: index=${currentIndex}, total=${totalPosts}, remaining=${remainingPosts}`);
             lastLoadMoreLengthRefGuest.current = totalPosts;
             getPostsWithoutLogin(true);
-          } else {
-            console.log("⏸️ PostWithoutLogin: Load more skipped", {
-              reason: !totalPosts ? "no posts" :
-                      remainingPosts > 0 ? `not at end (${remainingPosts} remaining)` :
-                      loadingMorePosts ? "already loading" :
-                      !nextPageToken ? "no next page token" :
-                      lastLoadMoreLengthRefGuest.current === totalPosts ? "already loaded" : "unknown"
-            });
+          }
+
+          // Show end message only when user is on the actual last post AND all data is loaded
+          if (isAtEnd && allDataLoaded && !showEndMessage) {
+            setShowEndMessage(true);
+            // Auto-hide after 3 seconds
+            if (endMessageTimerRef.current) {
+              clearTimeout(endMessageTimerRef.current);
+            }
+            endMessageTimerRef.current = setTimeout(() => {
+              setShowEndMessage(false);
+            }, 3000);
+          } else if (!isAtEnd && showEndMessage) {
+            // Hide if user scrolls back up
+            setShowEndMessage(false);
+            if (endMessageTimerRef.current) {
+              clearTimeout(endMessageTimerRef.current);
+            }
           }
         }}
-        keyExtractor={(item, index) => item?.restaurant_id?.toString() || index.toString()}
         ListEmptyComponent={() => {
           // Don't show empty component while loading
           if (isLoading) {
@@ -1512,6 +1468,48 @@ export default function PostWithoutLogin() {
           );
         }}
       />
+      {loadingMorePosts && (
+        <View
+          style={{
+            height: moderateScale(50),
+            width: windowWidth,
+            position: "absolute",
+            bottom: moderateScale(50),
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <ActivityIndicator size={"large"} color={colors.appPrimary} />
+          <Text
+            style={commonStyles.textWhite(14, { color: colors.appPrimary, marginTop: moderateScale(4) })}
+          >
+            Loading more restaurants...
+          </Text>
+        </View>
+      )}
+      {showEndMessage && !loadingMorePosts && (
+        <View
+          style={{
+            height: moderateScale(40),
+            width: windowWidth,
+            position: "absolute",
+            bottom: moderateScale(50),
+            justifyContent: "center",
+            alignItems: "center",
+            backgroundColor: "rgba(0,0,0,0.6)",
+            borderRadius: moderateScale(20),
+            alignSelf: "center",
+            paddingHorizontal: moderateScale(16),
+            maxWidth: windowWidth * 0.85,
+          }}
+        >
+          <Text
+            style={commonStyles.textWhite(14, { color: colors.white, textAlign: "center" })}
+          >
+            You've explored all nearby restaurants!
+          </Text>
+        </View>
+      )}
       <Modal
         transparent={true}
         visible={showForceLoginModal}
@@ -1582,7 +1580,7 @@ export default function PostWithoutLogin() {
               {images.map((item, index) => {
                 return (
                   <PressableImage
-                    key={index}
+                    key={`social-${item.id}`}
                     imageSource={item.imageSource}
                     onImagePress={() => onSocialLoginPress(item.id)}
                     imageStyle={styles.socialLoginImage(item.id)}

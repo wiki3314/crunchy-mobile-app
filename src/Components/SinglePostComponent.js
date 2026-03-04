@@ -150,7 +150,10 @@ export default function SinglePostComponent({}) {
   const [opacity] = useState(new Animated.Value(0));
   const [playOpacity] = useState(new Animated.Value(0));
   const [showLoadingMorePosts, setShowLoadingMorePosts] = useState(false);
+  const [allDataLoaded, setAllDataLoaded] = useState(false);
+  const [showEndMessage, setShowEndMessage] = useState(false);
   const [currentIncrementValue, setCurrentIncrementValue] = useState(1);
+  const endMessageTimerRef = useRef(null);
   const [isPausingVideo, setIsPausingVideo] = useState(false);
   const [isPlayingVideo, setIsPlayingVideo] = useState(false);
   const [currentPostImageIndex, setCurrentPostImageIndex] = useState(0);
@@ -212,14 +215,11 @@ export default function SinglePostComponent({}) {
       if (accessToken && allPosts.length === 0) {
         const operationId = "hydrateCache";
         try {
-          // Check cache without blocking UI if possible
-          console.log("📦 Loading cached posts from AsyncStorage...");
           const cachedPosts = await helperFunctions.loadCachedPosts(
             POSTS_CACHE_KEY
           );
-          
+
           if (cachedPosts && cachedPosts.posts && cachedPosts.posts.length > 0) {
-            console.log(`✅ Loaded ${cachedPosts.posts.length} cached posts`);
             cachedPosts.posts.forEach((item) => {
               if (item) item.isPaused = true;
             });
@@ -229,8 +229,7 @@ export default function SinglePostComponent({}) {
             }
             dispatch(setLoadNewPosts(false));
           } else {
-            console.log("⚠️ No cached posts found - Will fetch from server");
-            // Only show loader if we HAVE to fetch from server and have no cache
+            // No cache - show loader and fetch from server
             setLoadingState(true, "Loading your feed...", operationId);
           }
         } catch (error) {
@@ -253,16 +252,16 @@ export default function SinglePostComponent({}) {
     }
   }, [allPosts.length]);
 
+  // Cleanup end message timer on unmount
   useEffect(() => {
-    console.log("🔄 SinglePostComponent useEffect triggered", {
-      isFocused,
-      loadNewPosts,
-      hasAccessToken: !!accessToken,
-      hasUserLocation: !!userLocation,
-      categoriesCount: savedFoodCategories?.length,
-      existingPostsCount: allPosts.length,
-    });
+    return () => {
+      if (endMessageTimerRef.current) {
+        clearTimeout(endMessageTimerRef.current);
+      }
+    };
+  }, []);
 
+  useEffect(() => {
     // Offline-first approach: Only fetch from server if:
     // 1. loadNewPosts is true (explicit request to load/reload), OR
     // 2. No cache exists (allPosts.length === 0) AND user is logged in AND location available
@@ -279,30 +278,10 @@ export default function SinglePostComponent({}) {
     ) {
       // If loadNewPosts is true, clear cache before fetching
       if (loadNewPosts) {
-      console.log("🔄 Explicit refresh requested - clearing cache before fetch");
-      helperFunctions.clearCachedPosts(POSTS_CACHE_KEY);
+        helperFunctions.clearCachedPosts(POSTS_CACHE_KEY);
       }
-      
-      console.log("✅ Calling getServerPosts with:", {
-        latitude: userLocation.latitude,
-        longitude: userLocation.longitude,
-        categories: savedFoodCategories?.length,
-        radius: savedPostsRadius,
-        isInitialLoad: allPosts.length === 0,
-        willReplaceCache: true,
-        reason: loadNewPosts ? "explicit_refresh" : "no_cache",
-      });
       setCurrentIncrementValue(1);
       getServerPosts();
-    } else {
-      console.log("⚠️ Not loading posts because:", {
-        loadNewPosts,
-        hasAccessToken: !!accessToken,
-        hasUserLocation: !!userLocation,
-        alreadyLoading: isLoadingRef.current,
-        existingPostsCount: allPosts.length,
-        shouldFetch: shouldFetchFromServer,
-      });
     }
 
     allPosts.map((item, index) => {
@@ -480,18 +459,23 @@ export default function SinglePostComponent({}) {
     
     // ✅ Set loading ref synchronously before any awaits to prevent race conditions
     isLoadingRef.current = true;
+    setAllDataLoaded(false);
+    setShowEndMessage(false);
+    setCurrentIncrementValue(1);
     loadingOperationsRef.current.add(operationId);
     
     // Ensure we have required data
     if (!userLocation || !userLocation.latitude || !userLocation.longitude) {
       console.error("❌ getServerPosts: User location not available");
       dispatch(setLoadNewPosts(false));
+      setLoadingState(false, "", operationId);
       return;
     }
-    
+
     if (!accessToken) {
       console.error("❌ getServerPosts: Access token not available");
       dispatch(setLoadNewPosts(false));
+      setLoadingState(false, "", operationId);
       return;
     }
     
@@ -628,20 +612,12 @@ export default function SinglePostComponent({}) {
         }
       });
       
-      // ✅ REPLACE cache with new posts (initial load or explicit reload)
-      console.log(`✅ getServerPosts: Fetched ${response.length} posts from API`);
-      console.log(`✅ getServerPosts: After adding ads, total posts: ${arrPostsWithAllAds.length}`);
-      console.log(`📊 getServerPosts: Initial load - Showing ${arrPostsWithAllAds.length} posts`);
-      
       // Check if insufficient restaurants found (after adding ads, count actual restaurant posts)
       const restaurantPostsCount = arrPostsWithAllAds.filter(
         (item) => item && !item.isAdvertisement && !item.isGoogleAd
       ).length;
       
       if (restaurantPostsCount < MIN_RESTAURANTS_THRESHOLD && restaurantPostsCount > 0) {
-        console.warn(
-          `⚠️ getServerPosts: Only ${restaurantPostsCount} restaurants found within ${radiusInMiles} miles radius`
-        );
         // Only show toast if we actually have fewer than threshold but NOT 0
         setCustomToastMessage(
           `Only ${restaurantPostsCount} restaurant${
@@ -650,12 +626,6 @@ export default function SinglePostComponent({}) {
         );
         setShowCustomToast(true);
       } else if (restaurantPostsCount === 0 && (!arrPostsWithAllAds || arrPostsWithAllAds.length === 0)) {
-        console.warn(
-          `⚠️ getServerPosts: No restaurants found within ${radiusInMiles} miles radius`
-        );
-        
-        // ✅ Only show blocking alert if we don't have any existing posts visible
-        console.log(`📊 getServerPosts diagnostics: restaurantPostsCount=${restaurantPostsCount}, totalPostsVisible=${allPostsRef.current.length}`);
         
         if (allPostsRef.current.length === 0) {
           Alert.alert(
@@ -693,13 +663,7 @@ export default function SinglePostComponent({}) {
   };
 
   async function getNewPosts() {
-    // Add guard to prevent multiple simultaneous calls
-    console.log("🔵 getNewPosts() called");
-    console.log("🔵 showLoadingMorePosts =", showLoadingMorePosts);
-    console.log("🔵 allPosts.length =", allPosts.length);
-    
     if (showLoadingMorePosts) {
-      console.log("⚠️ getNewPosts: Already loading, skipping...");
       return;
     }
 
@@ -724,17 +688,7 @@ export default function SinglePostComponent({}) {
       const updatedRadiusMiles = baseRadiusMiles + 2 * currentIncrementValue;
       const updatedRadiusKm = updatedRadiusMiles * 1.609;
       
-      console.log("📍 getNewPosts: Loading more posts with:", {
-        latitude: userLocation.latitude,
-        longitude: userLocation.longitude,
-        originalRadiusKm: baseRadiusMiles * 1.609,
-        originalRadiusMiles: baseRadiusMiles,
-        updatedRadiusKm: updatedRadiusKm,
-        updatedRadiusMiles: updatedRadiusMiles,
-        savedRadiusFromPreferences: savedPostsRadius,
-        increment: currentIncrementValue,
-        existingPostsCount: allPosts.length,
-      });
+      console.log(`📍 getNewPosts: radius ${updatedRadiusMiles}mi, existing ${allPosts.length}`);
       
       let arrPostsWithAdminAds = [];
       let arrPostsWithAllAds = [];
@@ -795,8 +749,6 @@ export default function SinglePostComponent({}) {
       }).filter((item) => item !== undefined && item !== null);
       
       // Filter out duplicates by restaurant_id
-      console.log(`📊 getNewPosts: Fetched ${response.length} posts from API before filtering duplicates`);
-      const responseBeforeFilter = response.length;
       response = response.filter((iPlace, index, self) => {
         if (iPlace) {
           if (iPlace.restaurant_id) {
@@ -823,24 +775,17 @@ export default function SinglePostComponent({}) {
         }
       });
       const newPostsCount = response.length;
-      const duplicatesRemoved = responseBeforeFilter - newPostsCount;
-      console.log(`📊 getNewPosts: After filtering duplicates - ${newPostsCount} new posts, ${duplicatesRemoved} duplicates removed`);
       
       // Check if there are no new posts after filtering duplicates
       if (newPostsCount === 0) {
-        console.log("⚠️ getNewPosts: No new posts found after filtering duplicates");
-        console.log(`📍 Current radius: ${updatedRadiusMiles} miles (${updatedRadiusKm} km)`);
-        console.log(`📍 Try increasing radius or no more posts available in this area`);
+        console.log(`📍 getNewPosts: No new posts at ${updatedRadiusMiles}mi radius`);
         setShowLoadingMorePosts(false);
-        // Show message to user that no more posts available
-        setCustomToastMessage("No more restaurants found. Try increasing the radius in Search settings.");
-        setShowCustomToast(true);
+        setAllDataLoaded(true);
         return;
       }
       
       const limitedResponse = response.slice(0, PAGE_SIZE);
       if (limitedResponse.length === 0) {
-        console.log("⚠️ getNewPosts: No additional posts after pagination limit");
         setShowLoadingMorePosts(false);
         return;
       }
@@ -884,8 +829,7 @@ export default function SinglePostComponent({}) {
       const maxCacheSize = 100;
       const finalCache = mergedPosts.slice(-maxCacheSize);
 
-      console.log(`✅ getNewPosts: Appended ${arrPostsWithAllAds.length} posts`);
-      console.log(`📊 getNewPosts: Before: ${arrPostsInState.length}, After: ${finalCache.length} (max ${maxCacheSize})`);
+      console.log(`📍 getNewPosts: +${newPostsCount} new, total ${finalCache.length}`);
 
       setCurrentIncrementValue(currentIncrementValue + 1);
 
@@ -901,7 +845,8 @@ export default function SinglePostComponent({}) {
 
       dispatch(setAllPosts(finalCache));
       await helperFunctions.saveCachedPosts(finalCache, POSTS_CACHE_KEY, 10);
-      lastLoadMoreLengthRef.current = finalCache.length;
+      // Don't update lastLoadMoreLengthRef here - let the scroll handler
+      // detect the new total and trigger another load-more when user reaches the new end
       setShowLoadingMorePosts(false);
     } catch (err) {
       console.error("❌ Error loading new posts:", err);
@@ -1028,12 +973,7 @@ export default function SinglePostComponent({}) {
     console.log("📞 Calling API now...");
     await apiHandler.likeGooglePost(objPost, accessToken);
     await apiHandler.likeRestaurant(objPost, accessToken);
-    console.log("📞 API calls completed");
-
-    // Fetch fresh data from backend
-    console.log("🔄 Fetching fresh favorites from backend...");
     let freshFavorites = await apiHandler.getLikedRestaurants(accessToken);
-    console.log("📦 Fresh favorites received:", freshFavorites.length);
 
     // Map the data properly
     let mappedFavorites = (freshFavorites || [])
@@ -1070,7 +1010,6 @@ export default function SinglePostComponent({}) {
       mappedFavorites.length
     );
 
-    console.log("✅ Restaurant saved successfully");
   };
 
   const likeUnlikeInAppPosts = async (post, isLiked) => {
@@ -1192,7 +1131,6 @@ export default function SinglePostComponent({}) {
           console.log("🍽️ Saving in-app restaurant:", requestObject);
           dispatch(updateFavoriteRestaurants(objRestaurant));
           await apiHandler.likeRestaurant(requestObject, accessToken);
-          console.log("✅ Restaurant favorited successfully");
         } else if (restaurantId && restaurantId.startsWith("MOCK_")) {
           // Mock restaurant ID - use restaurant data from post
           console.log("Using mock restaurant data for like");
@@ -1221,7 +1159,6 @@ export default function SinglePostComponent({}) {
         ...post,
       };
       dispatch(updateLikedPosts(postToUpdate));
-      console.log("✅ Like operation completed successfully");
       console.log(
         "✅ Updated likedPosts with post id:",
         post.id,
@@ -1575,13 +1512,10 @@ export default function SinglePostComponent({}) {
 
   const getImageSource = (restaurantImage) => {
     if (!restaurantImage || restaurantImage === "" || typeof restaurantImage !== 'string') {
-      console.log("⚠️ SinglePostComponent getImageSource: No valid restaurantImage provided");
       return imagePath.americanFoodImage;
     }
-    
-    // Check if it's already a full URL
+
     if (restaurantImage.startsWith("http://") || restaurantImage.startsWith("https://")) {
-      console.log("✅ SinglePostComponent getImageSource: Already a full URL");
       return { uri: restaurantImage };
     }
     
@@ -1627,17 +1561,11 @@ export default function SinglePostComponent({}) {
               : "invalid source"
           );
         }}
-        onLoad={() => {
-          console.log(
-            "✅ SinglePostComponent ImageBackground loaded successfully"
-          );
-        }}
+        onLoad={() => {}}
       >
         <DoubleClick
           customStyle={commonStyles.flexFull}
-          singleTap={() => {
-            console.log("single tap");
-          }}
+          singleTap={() => {}}
           doubleTap={() => {
             onLikeUnlikePostPress(item, isLiked);
           }}
@@ -1723,6 +1651,7 @@ export default function SinglePostComponent({}) {
                     </Text>
                   </View>
                 )}
+                {/* Price display commented out for now
                 {item &&
                 item.restaurantPrice !== null &&
                 item.restaurantPrice !== undefined &&
@@ -1749,10 +1678,10 @@ export default function SinglePostComponent({}) {
                         color: colors.white,
                       })}
                     >
-                      $ {item.restaurantPrice}
+                      {"$".repeat(item.restaurantPrice)}
                     </Text>
                   </View>
-                ) : null}
+                ) : null} */}
                 <Text
                   numberOfLines={4}
                   style={commonStyles.textWhite(14, {
@@ -2281,17 +2210,8 @@ export default function SinglePostComponent({}) {
               // keywords: ['Restaurant', 'Food', 'Diet', 'Social food']
             }
           }
-          onAdFailedToLoad={(error) => {
-            console.log("Ad loading error is", error);
-          }}
-          onAdLoaded={({ height, width }) => {
-            console.log(
-              "Ad is loaded with height",
-              height,
-              " and width ",
-              width
-            );
-          }}
+          onAdFailedToLoad={() => {}}
+          onAdLoaded={() => {}}
         />
       </View>
     );
@@ -2563,19 +2483,32 @@ export default function SinglePostComponent({}) {
 
           const totalPosts = allPosts.length;
           const remainingPosts = totalPosts - currentIndex - 1;
-          console.log(`📍 Scroll position: Index ${currentIndex} of ${totalPosts} (${remainingPosts} remaining)`);
-          
+          const isAtEnd = totalPosts > 0 && remainingPosts <= 0;
+
+          // Try to load more when at the end
           if (
-            totalPosts > 0 &&
-            remainingPosts <= 0 &&
+            isAtEnd &&
             !showLoadingMorePosts &&
             lastLoadMoreLengthRef.current !== totalPosts
           ) {
-            console.log("🚀 Reached end of list, loading more posts...");
             lastLoadMoreLengthRef.current = totalPosts;
             getNewPosts();
-          } else {
-            console.log("⏸️ Load more skipped - not at the end or already loading");
+          }
+
+          // Show end message only when user is on the actual last post AND all data is loaded
+          if (isAtEnd && allDataLoaded && !showEndMessage) {
+            setShowEndMessage(true);
+            if (endMessageTimerRef.current) {
+              clearTimeout(endMessageTimerRef.current);
+            }
+            endMessageTimerRef.current = setTimeout(() => {
+              setShowEndMessage(false);
+            }, 3000);
+          } else if (!isAtEnd && showEndMessage) {
+            setShowEndMessage(false);
+            if (endMessageTimerRef.current) {
+              clearTimeout(endMessageTimerRef.current);
+            }
           }
 
           // Handle video playback state for all items (posts + ads)
@@ -2626,7 +2559,7 @@ export default function SinglePostComponent({}) {
       {showLoadingMorePosts && (
         <View
           style={{
-            height: moderateScale(40),
+            height: moderateScale(50),
             width: windowWidth,
             position: "absolute",
             bottom: moderateScale(50),
@@ -2636,13 +2569,35 @@ export default function SinglePostComponent({}) {
         >
           <ActivityIndicator size={"large"} color={colors.appPrimary} />
           <Text
-            style={commonStyles.textWhite(16, { color: colors.appPrimary })}
+            style={commonStyles.textWhite(14, { color: colors.appPrimary, marginTop: moderateScale(4) })}
           >
-            Loading more
+            Loading more restaurants...
           </Text>
         </View>
       )}
-      {/* <CommonButton buttonTitle={'Load More'} /> */}
+      {showEndMessage && !showLoadingMorePosts && (
+        <View
+          style={{
+            height: moderateScale(40),
+            width: windowWidth,
+            position: "absolute",
+            bottom: moderateScale(50),
+            justifyContent: "center",
+            alignItems: "center",
+            backgroundColor: "rgba(0,0,0,0.6)",
+            borderRadius: moderateScale(20),
+            alignSelf: "center",
+            paddingHorizontal: moderateScale(16),
+            maxWidth: windowWidth * 0.85,
+          }}
+        >
+          <Text
+            style={commonStyles.textWhite(14, { color: colors.white, textAlign: "center" })}
+          >
+            You've explored all nearby restaurants!
+          </Text>
+        </View>
+      )}
       <Modal
         visible={showCommentModal}
         transparent={true}

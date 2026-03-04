@@ -194,7 +194,6 @@ export default function SplashScreen(props) {
   };
 
   const getInitialData = async () => {
-    setIsLoading(true);
     // 1. Check for cached location first
     const cachedLocation = await helperFunctions.getCachedLocation();
     if (cachedLocation && validateLocation(cachedLocation)) {
@@ -364,12 +363,8 @@ export default function SplashScreen(props) {
         dispatch(savePostsRadius(20));
       }
 
-      if (!cachedLocation) {
-        setIsLoading(true);
-        setLoaderTitle("Fetching location...");
-      }
-      await getLocation(!!cachedLocation);
-      setIsLoading(false);
+      // Guest user: fetch location in background, no loader
+      getLocation(true);
 
       // No saved token - go directly to AuthBottomNavigation (skip LandingScreen carousel)
       setTimeout(() => {

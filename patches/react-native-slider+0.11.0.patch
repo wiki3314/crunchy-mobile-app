@@ -1,0 +1,15 @@
+diff --git a/node_modules/react-native-slider/src/Slider.js b/node_modules/react-native-slider/src/Slider.js
+index 37deee5..d7ce5b0 100644
+--- a/node_modules/react-native-slider/src/Slider.js
++++ b/node_modules/react-native-slider/src/Slider.js
+@@ -11,9 +11,9 @@ import {
+   PanResponder,
+   View,
+   Easing,
+-  ViewPropTypes
+ } from "react-native";
+ 
++import { ViewPropTypes } from 'deprecated-react-native-prop-types';
+ import PropTypes from 'prop-types';
+ 
+ var TRACK_SIZE = 4;

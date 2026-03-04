@@ -15,6 +15,9 @@ export const BASE_URL = "http://54.193.173.26:3000/api/"; // Old production
 
 // ================================================================
 
+// Global axios defaults - prevent requests from hanging indefinitely
+axios.defaults.timeout = 15000; // 15 second timeout for all requests
+
 // Token validation helper
 const validateToken = (token) => {
   if (!token || token === "" || token === null || token === undefined) {

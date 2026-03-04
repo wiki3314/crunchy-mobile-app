@@ -211,6 +211,7 @@ export const helperFunctions = {
         {arrRatings.map((item, index) => {
           return (
             <Image
+              key={`star-${index}`}
               source={item.imageSource}
               style={{
                 height: moderateScale(size),
