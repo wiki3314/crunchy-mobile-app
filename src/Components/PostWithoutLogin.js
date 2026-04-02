@@ -726,9 +726,10 @@ export default function PostWithoutLogin() {
   const onGooglePress = () => {
     setIsLoading(true);
     console.log("🚀 Starting Google Sign-in...");
+    // iosClientId MUST match ios/GoogleService-Info.plist CLIENT_ID & Info.plist URL scheme
     GoogleSignin.configure({
       iosClientId:
-        "887856847210-br194482savpiontotn1d0kucuosbdct.apps.googleusercontent.com",
+        "887856847210-ahbpunrbi25qs6tnh0taksm298nkqdm4.apps.googleusercontent.com",
       androidClientId:
         "887856847210-kn6g0ggbduj48m2qpgntaog0bfmmp0os.apps.googleusercontent.com",
     });

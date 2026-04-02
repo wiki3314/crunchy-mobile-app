@@ -18,7 +18,9 @@ const App = () => {
   const navigationRef = useRef(null);
 
   useEffect(() => {
-    initializeApp();
+    initializeApp().catch((err) => {
+      console.error("initializeApp failed:", err);
+    });
     // Set global notification navigation handler
     setNotificationNavigationHandler(handleNotificationNavigation);
   }, []);
@@ -129,6 +131,7 @@ const App = () => {
   };
 
   const initializeApp = async () => {
+    try {
     // await mobileAds()
     //   .setRequestConfiguration({
     //     // Update all future requests suitable for parental guidance
@@ -225,8 +228,14 @@ const App = () => {
               }, 1500);
             }
           }
-        });
+        })
+        .catch((err) =>
+          console.error("getInitialNotification failed:", err)
+        );
       // return unsubscribe;
+    }
+    } catch (err) {
+      console.error("initializeApp error:", err);
     }
   };
 

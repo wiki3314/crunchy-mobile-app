@@ -14,6 +14,7 @@ import { firebase } from "@react-native-firebase/dynamic-links";
 import { AppState, PermissionsAndroid, Platform } from "react-native";
 import Geolocation from "@react-native-community/geolocation";
 import { apiHandler } from "../Constants/apiHandler";
+import { helperFunctions } from "../Constants/helperFunctions";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SharedLinkStack } from "./SharedLinkStack";
 
@@ -169,51 +170,47 @@ const AppNavigation = (props) => {
       }
     }
     if (receivedPost.id == "") {
-      await getAppLaunchLink();
-      firebase.dynamicLinks().onLink(({ url }) => {
-        let receivedLink = url;
-        let receivedID;
-        let objReceivedPost;
-        receivedID = receivedLink.split("?")[1];
-        if (url.includes("googlePost")) {
-          objReceivedPost = {
-            isGoogle: true,
-            id: receivedID,
-          };
-        } else {
-          objReceivedPost = {
-            isGoogle: false,
-            id: receivedID,
-          };
-        }
-        dispatch(setReceivedPost(objReceivedPost));
-        dispatch(setAppLaunchedFromLink(true));
-      });
+      try {
+        await getAppLaunchLink();
+        firebase.dynamicLinks().onLink((link) => {
+          try {
+            const url = link?.url;
+            if (!url || typeof url !== "string") {
+              return;
+            }
+            const receivedID = url.split("?")[1];
+            const objReceivedPost = {
+              isGoogle: url.includes("googlePost"),
+              id: receivedID,
+            };
+            dispatch(setReceivedPost(objReceivedPost));
+            dispatch(setAppLaunchedFromLink(true));
+          } catch (e) {
+            console.warn("dynamicLinks onLink:", e);
+          }
+        });
+      } catch (e) {
+        console.warn("Firebase Dynamic Links setup failed:", e);
+      }
     }
   };
 
   const getAppLaunchLink = async () => {
     try {
-      const { url } = await firebase.dynamicLinks().getInitialLink();
-      let receivedLink = url;
-      let receivedID;
-      let objReceivedPost;
-      receivedID = receivedLink.split("?")[1];
-      if (url.includes("googlePost")) {
-        objReceivedPost = {
-          isGoogle: true,
-          id: receivedID,
-        };
-      } else {
-        objReceivedPost = {
-          isGoogle: false,
-          id: receivedID,
-        };
+      const link = await firebase.dynamicLinks().getInitialLink();
+      if (!link?.url || typeof link.url !== "string") {
+        return;
       }
+      const url = link.url;
+      const receivedID = url.split("?")[1];
+      const objReceivedPost = {
+        isGoogle: url.includes("googlePost"),
+        id: receivedID,
+      };
       dispatch(setReceivedPost(objReceivedPost));
       dispatch(setAppLaunchedFromLink(true));
-    } catch {
-      //handle errors
+    } catch (e) {
+      console.warn("getInitialLink:", e);
     }
   };
 

@@ -39,7 +39,7 @@
 			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.googleusercontent.apps.887856847210-br194482savpiontotn1d0kucuosbdct</string>
+				<string>com.googleusercontent.apps.887856847210-ahbpunrbi25qs6tnh0taksm298nkqdm4</string>
 			</array>
 		</dict>
 		<dict>
@@ -54,7 +54,6 @@
 				<string>crunchyapp.page.link</string>
 			</array>
 		</dict>
-		<dict/>
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
@@ -75,6 +74,10 @@
 	<array>
 		<string>tel</string>
 		<string>telprompt</string>
+		<string>fbapi</string>
+		<string>fb-messenger-api</string>
+		<string>fbauth2</string>
+		<string>fbshareextension</string>
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
@@ -84,6 +87,17 @@
 		<false/>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<!-- Allow HTTP dev traffic to your backend IP -->
+			<key>54.193.173.26</key>
+			<dict>
+				<key>NSTemporaryExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+			</dict>
+		</dict>
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Crunchii requires user’s camera to add photos and videos for posts</string>

@@ -192,7 +192,7 @@ export default function EditProfile(props) {
         androidClientId:
           "887856847210-qevj4lnpjt84q0sqppgted93lp1f1suf.apps.googleusercontent.com",
         iosClientId:
-          "887856847210-br194482savpiontotn1d0kucuosbdct.apps.googleusercontent.com",
+          "887856847210-ahbpunrbi25qs6tnh0taksm298nkqdm4.apps.googleusercontent.com",
       });
       await GoogleSignin.revokeAccess();
     }

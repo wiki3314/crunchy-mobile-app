@@ -83,30 +83,50 @@ PushNotification.configure({
 
   // (required) Called when a remote is received or opened, or local notification is opened
   onNotification: function (notification) {
-    console.log("📱 PushNotification onNotification:", notification);
+    try {
+      console.log("📱 PushNotification onNotification:", notification);
 
-    // Handle notification click (Android - when local notification is clicked)
-    if (
-      notification.userInteraction ||
-      (notification.data && Object.keys(notification.data).length > 0)
-    ) {
-      const notificationData = notification.data || notification.userInfo || {};
-      console.log(
-        "📱 Android notification clicked with data:",
-        notificationData
-      );
+      // Handle notification click (Android - when local notification is clicked)
+      if (
+        notification.userInteraction ||
+        (notification.data && Object.keys(notification.data).length > 0)
+      ) {
+        const notificationData =
+          notification.data || notification.userInfo || {};
+        console.log(
+          "📱 Android notification clicked with data:",
+          notificationData
+        );
 
-      // Trigger navigation handler
-      if (notificationData && Object.keys(notificationData).length > 0) {
-        // Small delay to ensure navigation is ready
-        setTimeout(() => {
-          handleNotificationClick(notificationData);
-        }, 500);
+        // Trigger navigation handler
+        if (notificationData && Object.keys(notificationData).length > 0) {
+          // Small delay to ensure navigation is ready
+          setTimeout(() => {
+            try {
+              handleNotificationClick(notificationData);
+            } catch (e) {
+              console.error("handleNotificationClick:", e);
+            }
+          }, 500);
+        }
+      }
+    } catch (e) {
+      console.error("PushNotification onNotification:", e);
+    } finally {
+      // iOS only — Android objects have no finish(); calling it throws → RCTFatal
+      if (
+        notification &&
+        typeof notification.finish === "function" &&
+        PushNotificationIOS &&
+        PushNotificationIOS.FetchResult
+      ) {
+        try {
+          notification.finish(PushNotificationIOS.FetchResult.NoData);
+        } catch (e) {
+          console.error("notification.finish:", e);
+        }
       }
     }
-
-    // (required) Called when a remote is received or opened, or local notification is opened
-    notification.finish(PushNotificationIOS.FetchResult.NoData);
   },
 
   // (optional) Called when Registered Action is pressed and invokeApp is false, if true onNotification will be called (Android)
