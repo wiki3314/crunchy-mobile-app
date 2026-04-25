@@ -1,5 +1,5 @@
 import React, { Component } from "react";
-import { TouchableOpacity } from "react-native";
+import { Pressable } from "react-native";
 
 export default class DoubleClick extends Component {
     constructor(props) {
@@ -51,9 +51,9 @@ export default class DoubleClick extends Component {
 
     render() {
         return (
-            <TouchableOpacity activeOpacity={1} style={this.props.customStyle} onPress={this._onPress}>
+            <Pressable style={this.props.customStyle} onPress={this._onPress}>
                 {this.props.children}
-            </TouchableOpacity>
+            </Pressable>
         );
     }
 

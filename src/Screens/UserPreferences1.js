@@ -69,9 +69,6 @@ export default function UserPreferences1(props) {
     if (selectedCategories.length == 0) {
       setShowErrorMessage(true);
       setErrorMessage("No category selected..!!!");
-      if (isVibrationEnabled) {
-        Vibration.vibrate(errorVibrationPattern);
-      }
     } else {
       let arrSelectedCategories = [...selectedCategories];
       arrSelectedCategories = arrSelectedCategories.map((item, index) => {
@@ -89,9 +86,6 @@ export default function UserPreferences1(props) {
         setIsLoading(false);
         setShowCustomToast(true);
         dispatch(setLoadNewPosts(true));
-        if (isVibrationEnabled) {
-          Vibration.vibrate(searchVibrationPattern);
-        }
         dispatch(setIsNewUser(false));
         navigation.replace(navigationStrings.BottomTabNavigation);
       } catch (error) {
@@ -102,9 +96,6 @@ export default function UserPreferences1(props) {
   }
 
   function onSingleCategoryPress(category) {
-    if (isVibrationEnabled) {
-      Vibration.vibrate([0, 30]);
-    }
     let arrSelectedCategories = [...selectedCategories];
     if (
       arrSelectedCategories &&
@@ -189,9 +180,6 @@ export default function UserPreferences1(props) {
   };
 
   const onSlideChange = () => {
-    if (isVibrationEnabled) {
-      Vibration.vibrate();
-    }
   };
 
   const onSkipNowPress = () => {

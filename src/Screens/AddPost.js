@@ -166,21 +166,12 @@ export default function AddPost(props) {
     if (ratingCount == 0) {
       setErrorMessage("Rating is missing");
       setShowErrorMessage(true);
-      if (isVibrationEnabled) {
-        Vibration.vibrate(errorVibrationPattern);
-      }
     } else if (review == "") {
       setErrorMessage("Post review is missing");
       setShowErrorMessage(true);
-      if (isVibrationEnabled) {
-        Vibration.vibrate(errorVibrationPattern);
-      }
     } else if (selectedRestaurantID == "") {
       setErrorMessage("Restaurant details are missing");
       setShowErrorMessage(true);
-      if (isVibrationEnabled) {
-        Vibration.vibrate(errorVibrationPattern);
-      }
     } else {
       setIsLoading(true);
       isEditPost

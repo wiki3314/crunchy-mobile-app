@@ -194,10 +194,26 @@ export default function Search(props) {
     await fetchCategories();
   };
 
+  const sortCategoriesByPreference = (categories) => {
+    const preferredOrder = ["italian", "mexican", "asian", "seafood", "vegetarian", "vegan", "american"];
+    const sorted = [...categories].sort((a, b) => {
+      const aName = (a.name || "").toLowerCase();
+      const bName = (b.name || "").toLowerCase();
+      const aIndex = preferredOrder.findIndex(p => aName.includes(p));
+      const bIndex = preferredOrder.findIndex(p => bName.includes(p));
+      if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+      if (aIndex !== -1) return -1;
+      if (bIndex !== -1) return 1;
+      return 0;
+    });
+    return sorted;
+  };
+
   const fetchCategories = async () => {
     // If categories are already in Redux, use them immediately
     if (foodCategories && Array.isArray(foodCategories) && foodCategories.length > 0) {
-      let condensedCategories = foodCategories.slice(0, 12);
+      let sortedCategories = sortCategoriesByPreference(foodCategories);
+      let condensedCategories = sortedCategories.slice(0, 12);
       let displayedData = helperFunctions.transformArray(condensedCategories);
       setDisplayedFoodCategories(displayedData);
       setCategoriesLoadFailed(false);
@@ -212,7 +228,8 @@ export default function Search(props) {
       let categories = await apiHandler.getAllCategories(accessToken);
       if (categories && categories.length > 0) {
         dispatch(setFoodCategories(categories));
-        let condensedCategories = categories.slice(0, 12);
+        let sortedCategories = sortCategoriesByPreference(categories);
+        let condensedCategories = sortedCategories.slice(0, 12);
         let displayedData = helperFunctions.transformArray(condensedCategories);
         setDisplayedFoodCategories(displayedData);
         setCategoriesLoadFailed(false);
@@ -232,9 +249,6 @@ export default function Search(props) {
 
   const onRandomPress = () => {
     dispatch(setLoadRandomPosts(!loadRandomPosts));
-    if (isVibrationEnabled) {
-      Vibration.vibrate(VIBRATION_PATTERN);
-    }
     let arrSelectedCategories = [];
     if (loadRandomPosts) {
       setSelectedCategories(arrSelectedCategories);
@@ -250,19 +264,13 @@ export default function Search(props) {
       if (distance == 0) {
         setShowErrorMessage(true);
         setErrorMessage("Distance must be greater than 0");
-        if (isVibrationEnabled) {
-          Vibration.vibrate(errorVibrationPattern);
-        }
         return;
       }
-      
+
       try {
         await AsyncStorage.setItem("guestRadius", distance.toString());
         dispatch(savePostsRadius(distance));
         dispatch(setLoadNewPosts(true));
-        if (isVibrationEnabled) {
-          Vibration.vibrate(searchVibrationPattern);
-        }
         navigation.navigate(navigationStrings.HomeScreen);
       } catch (error) {
         console.error("Error saving guest radius:", error);
@@ -273,15 +281,9 @@ export default function Search(props) {
     if (distance == 0) {
       setShowErrorMessage(true);
       setErrorMessage("Distance must be greater than 0");
-      if (isVibrationEnabled) {
-        Vibration.vibrate(errorVibrationPattern);
-      }
     } else if (selectedCategories.length == 0) {
       setShowErrorMessage(true);
       setErrorMessage("No category selected..!!!");
-      if (isVibrationEnabled) {
-        Vibration.vibrate(errorVibrationPattern);
-      }
     } else {
       let arrSelectedCategories = [...selectedCategories];
       arrSelectedCategories = arrSelectedCategories.map((item, index) => {
@@ -306,9 +308,6 @@ export default function Search(props) {
         setIsLoading(false);
         // Toast message removed - navigate directly
         dispatch(setLoadNewPosts(true));
-        if (isVibrationEnabled) {
-          Vibration.vibrate(searchVibrationPattern);
-        }
         // Navigate directly to HomeScreen without showing toast
         navigation.navigate(navigationStrings.HomeScreen);
       } catch (error) {
@@ -320,9 +319,6 @@ export default function Search(props) {
   }
 
   function onSingleCategoryPress(category) {
-    if (isVibrationEnabled) {
-      Vibration.vibrate([0, 30]);
-    }
     let arrSelectedCategories = [...selectedCategories];
     if (
       arrSelectedCategories &&
@@ -470,26 +466,19 @@ export default function Search(props) {
   };
 
   const onSlideChange = () => {
-    if (isVibrationEnabled) {
-      Vibration.vibrate();
-    }
   };
 
-  const renderLimitingDistance = (distance) => {
+  const renderLimitingDistance = (dist) => {
     return (
       <View style={styles.singleContainer}>
         <Text
-          style={commonStyles.textWhite(18, {
+          style={commonStyles.textWhite(14, {
             color: currentThemeSecondaryColor,
             fontWeight: "bold",
           })}
         >
-          {distance}
+          {dist} {dist === 1 ? "mile" : "miles"}
         </Text>
-        <MaterialCommunityIcons
-          name="target"
-          style={styles.singlePinContainer(currentThemeSecondaryColor)}
-        />
       </View>
     );
   };
@@ -683,9 +672,6 @@ export default function Search(props) {
                   restaurant_id: data.place_id,
                 });
               } else {
-                if (isVibrationEnabled) {
-                  Vibration.vibrate(errorVibrationPattern);
-                }
                 setErrorMessage("No restaurant selected..!!!");
                 setShowErrorMessage(true);
               }
@@ -1197,6 +1183,13 @@ export default function Search(props) {
               {renderLimitingDistance(1)}
               {renderLimitingDistance(50)}
             </View>
+            <View style={styles.hashMarksContainer}>
+              {Array.from({ length: 11 }, (_, i) => (
+                <View key={i} style={styles.hashMarkWrapper}>
+                  <View style={styles.hashMark(currentThemeSecondaryColor)} />
+                </View>
+              ))}
+            </View>
             <Slider
               value={!isNaN(Number(distance)) ? Number(distance) : 20}
               onValueChange={(value) => {
@@ -1231,8 +1224,7 @@ export default function Search(props) {
                 alignSelf: "center",
               })}
             >
-              {Math.round(distance) + " "}
-              miles
+              {Math.round(distance) + " " + (Math.round(distance) === 1 ? "mile" : "miles")}
             </Text>
           </View>
           <TouchableOpacity
@@ -1427,6 +1419,23 @@ const styles = StyleSheet.create({
       color: currentColor,
     };
   },
+  hashMarksContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: windowWidth - moderateScale(25),
+    alignSelf: "center",
+    marginTop: moderateScale(4),
+    marginBottom: -moderateScale(2),
+  },
+  hashMarkWrapper: {
+    alignItems: "center",
+  },
+  hashMark: (currentColor) => ({
+    width: 1.5,
+    height: moderateScale(6),
+    backgroundColor: currentColor || colors.grey,
+    opacity: 0.5,
+  }),
   sliderContainer: {
     marginTop: -moderateScale(5),
     width: windowWidth - moderateScale(25),

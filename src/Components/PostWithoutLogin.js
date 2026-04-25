@@ -13,6 +13,7 @@ import {
   FlatList,
   Platform,
   Linking,
+  RefreshControl,
 } from "react-native";
 import Geolocation from "@react-native-community/geolocation";
 import { setLocation } from "../Redux/actions/actions";
@@ -132,6 +133,8 @@ export default function PostWithoutLogin() {
   const [nextPageToken, setNextPageToken] = useState(null);
   const endMessageTimerRef = useRef(null);
   const [hasLoadedCache, setHasLoadedCache] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const shouldShuffleRefGuest = useRef(false);
   const POSTS_CACHE_KEY_GUEST = "cachedPosts_guest";
   const PAGE_SIZE = 9;
   const lastLoadMoreLengthRefGuest = useRef(0);
@@ -266,7 +269,7 @@ export default function PostWithoutLogin() {
 
       const basePosts = isLoadMore ? allPosts : [];
       const mergedPosts = [...basePosts, ...limitedPosts];
-      const uniquePosts = Array.from(
+      let uniquePosts = Array.from(
         new Map(
           mergedPosts.map((item, index) => [
             item?.restaurant_id ||
@@ -276,6 +279,15 @@ export default function PostWithoutLogin() {
           ])
         ).values()
       );
+
+      // Shuffle on pull-to-refresh so the user sees a fresh order
+      if (!isLoadMore && shouldShuffleRefGuest.current && uniquePosts.length > 1) {
+        for (let i = uniquePosts.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [uniquePosts[i], uniquePosts[j]] = [uniquePosts[j], uniquePosts[i]];
+        }
+        shouldShuffleRefGuest.current = false;
+      }
 
       dispatch(setPostsWithoutLogin(uniquePosts));
       const newNextPageToken = response?.nextPageToken || null;
@@ -322,14 +334,25 @@ export default function PostWithoutLogin() {
       );
     } catch (error) {
       console.error("❌ Error loading posts without login:", error);
+      shouldShuffleRefGuest.current = false;
     } finally {
       if (isLoadMore) {
         setLoadingMorePosts(false);
       } else {
         setIsLoading(false);
       }
+      setIsRefreshing(false);
     }
   }
+
+  const onRefreshFeedGuest = useCallback(() => {
+    setIsRefreshing(true);
+    shouldShuffleRefGuest.current = true;
+    helperFunctions.clearCachedPosts(POSTS_CACHE_KEY_GUEST);
+    setNextPageToken(null);
+    lastLoadMoreLengthRefGuest.current = 0;
+    getPostsWithoutLogin(false);
+  }, []);
 
   const searchQuickBitesPlaces = async () => {
     try {
@@ -1063,7 +1086,7 @@ export default function PostWithoutLogin() {
           dispatch(showHideForceLoginModal(true));
         }
       } else if (event.nativeEvent.translationX > 50) {
-        dispatch(showHideForceLoginModal(true));
+        navigation.navigate(navigationStrings.SearchScreen);
       }
     }
   };
@@ -1180,7 +1203,7 @@ export default function PostWithoutLogin() {
           onLoad={() => {}}
           onLoadStart={() => {}}
         >
-          <View style={styles.sideTapContainer}>
+          <View style={styles.sideTapContainer} pointerEvents="box-none">
             <TouchableOpacity
               style={styles.leftTap}
               activeOpacity={1}
@@ -1193,12 +1216,13 @@ export default function PostWithoutLogin() {
             />
           </View>
           <PanGestureHandler
-            failOffsetY={[-5, 5]}
-            activeOffsetX={[-5, 5]}
+            failOffsetY={[-20, 20]}
+            activeOffsetX={[-15, 15]}
             onHandlerStateChange={(event) => {
               handleGesture(event, item);
             }}
           >
+            <View collapsable={false} style={[styles.fullInnerContainer, { backgroundColor: "transparent" }]}>
             <View
               pointerEvents="box-none"
               style={[styles.fullInnerContainer, { zIndex: 20 }]}
@@ -1265,9 +1289,9 @@ export default function PostWithoutLogin() {
                   style={commonStyles.textWhite(20, {
                     fontWeight: "bold",
                     width: "85%",
-                    textShadowColor: colors.black,
-                    textShadowOffset: { width: 5, height: 5 },
-                    textShadowRadius: 10,
+                    textShadowColor: "rgba(0,0,0,0.9)",
+                    textShadowOffset: { width: 0, height: 0 },
+                    textShadowRadius: 15,
                   })}
                 >
                   {item && item.restaurantName}
@@ -1276,10 +1300,8 @@ export default function PostWithoutLogin() {
                   <View
                     pointerEvents="none"
                     style={{
-                      backgroundColor: "rgba(0,0,0,0.85)",
                       paddingHorizontal: moderateScale(4),
                       paddingVertical: moderateScale(2),
-                      borderRadius: moderateScale(4),
                       alignSelf: "flex-start",
                       marginTop: moderateScale(4),
                     }}
@@ -1287,9 +1309,9 @@ export default function PostWithoutLogin() {
                     {helperFunctions.getStarRatings(item.restaurantRating)}
                     <Text
                       style={commonStyles.textWhite(18, {
-                        textShadowColor: colors.black,
-                        textShadowOffset: { width: 2, height: 2 },
-                        textShadowRadius: 5,
+                        textShadowColor: "rgba(0,0,0,0.9)",
+                        textShadowOffset: { width: 0, height: 0 },
+                        textShadowRadius: 12,
                         fontWeight: "700",
                         color: colors.white,
                       })}
@@ -1334,14 +1356,15 @@ export default function PostWithoutLogin() {
                     fontWeight: "400",
                     width: "80%",
                     color: colors.grey,
-                    textShadowColor: colors.black,
-                    textShadowOffset: { width: 5, height: 5 },
-                    textShadowRadius: 10,
+                    textShadowColor: "rgba(0,0,0,0.9)",
+                    textShadowOffset: { width: 0, height: 0 },
+                    textShadowRadius: 12,
                   })}
                 >
                   {item && item.review}
                 </Text>
               </View>
+            </View>
             </View>
           </PanGestureHandler>
         </ImageBackground>
@@ -1373,6 +1396,14 @@ export default function PostWithoutLogin() {
         }
         pagingEnabled={true}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={onRefreshFeedGuest}
+            tintColor={colors.appPrimary}
+            colors={[colors.appPrimary]}
+          />
+        }
         removeClippedSubviews={true}
         maxToRenderPerBatch={5}
         windowSize={5}
@@ -1767,17 +1798,21 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    flexDirection: "row",
-    zIndex: 10,
+    zIndex: 15,
+    pointerEvents: "box-none",
   },
   leftTap: {
+    position: "absolute",
+    top: "10%",
+    left: 0,
     width: "30%",
-    height: "100%",
+    height: "55%",
   },
   rightTap: {
-    width: "30%",
-    height: "100%",
     position: "absolute",
+    top: "10%",
     right: 0,
+    width: "30%",
+    height: "55%",
   },
 });

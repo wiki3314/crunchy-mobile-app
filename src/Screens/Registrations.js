@@ -130,7 +130,6 @@ export default function Registration(props) {
     if (fullName.trim() == "") {
       setErrorMessage("Full name can't be empty");
       setShowErrorMessage(true);
-      Vibration.vibrate(errorVibrationPattern);
     }
     // else if (userName.trim() == '') {
     //     Toast.show('Username is required')
@@ -138,19 +137,15 @@ export default function Registration(props) {
     else if (email.trim() == "" || !validateEmail(email.trim())) {
       setErrorMessage("Invalid email");
       setShowErrorMessage(true);
-      Vibration.vibrate(errorVibrationPattern);
     } else if (password.trim().length < 7) {
       setErrorMessage("Password length too short");
       setShowErrorMessage(true);
-      Vibration.vibrate(errorVibrationPattern);
     } else if (password.trim() !== confirmPassword.trim()) {
       setErrorMessage("Both passwords should match");
       setShowErrorMessage(true);
-      Vibration.vibrate(errorVibrationPattern);
     } else if (!termsAndConditionsAccepted) {
       setErrorMessage("Terms and Conditions not accepted");
       setShowErrorMessage(true);
-      Vibration.vibrate(errorVibrationPattern);
     } else {
       setIsLoading(true);
       setLoaderTitle("Adding details");
@@ -173,7 +168,6 @@ export default function Registration(props) {
           try {
             AsyncStorage.setItem("swipeValue", "0");
             AsyncStorage.setItem("isReviewPosted", "false");
-            Vibration.vibrate(userSuccessPattern);
             let token = result.token;
             await helperFunctions.storeAccessToken(token);
 
@@ -222,18 +216,15 @@ export default function Registration(props) {
               "Registration successful but failed to load user data. Please login again."
             );
             setShowErrorMessage(true);
-            Vibration.vibrate(errorVibrationPattern);
           }
         } else {
           setShowErrorMessage(true);
           setErrorMessage(result?.message || "Registration failed");
-          Vibration.vibrate(errorVibrationPattern);
         }
       } catch (error) {
         setIsLoading(false);
         setErrorMessage(error.message || "An error occurred");
         setShowErrorMessage(true);
-        Vibration.vibrate(errorVibrationPattern);
       }
     }
   };

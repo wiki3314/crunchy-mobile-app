@@ -5,6 +5,7 @@ import { Provider } from "react-redux";
 import store from "./src/Redux/store/store";
 import { Provider as PaperProvider } from "react-native-paper";
 import { Alert, Linking, AppState, Platform, View } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { NavigationContainer } from "@react-navigation/native";
 // import mobileAds, { MaxAdContentRating } from 'react-native-google-mobile-ads';
 import messaging from "@react-native-firebase/messaging";
@@ -240,13 +241,15 @@ const App = () => {
   };
 
   return (
-    <PaperProvider>
-      <Provider store={store}>
-        <NavigationContainer ref={navigationRef}>
-          <AppNavigation />
-        </NavigationContainer>
-      </Provider>
-    </PaperProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <PaperProvider>
+        <Provider store={store}>
+          <NavigationContainer ref={navigationRef}>
+            <AppNavigation />
+          </NavigationContainer>
+        </Provider>
+      </PaperProvider>
+    </GestureHandlerRootView>
   );
 };
 

@@ -143,11 +143,9 @@ export default function Login(props) {
     if (email.trim() == "") {
       setErrorMessage("Enter email to continue");
       setShowErrorMessage(true);
-      Vibration.vibrate(errorVibrationPattern);
     } else if (password.trim() == "") {
       setErrorMessage("Enter password to continue");
       setShowErrorMessage(true);
-      Vibration.vibrate(errorVibrationPattern);
     } else {
       try {
         setIsLoading(true);
@@ -183,19 +181,16 @@ export default function Login(props) {
 
           setIsLoading(false);
           setShowCustomToast(true);
-          Vibration.vibrate(userSuccessPattern);
         } else {
           setIsLoading(false);
           let message = response?.message || response?.error || "Login failed";
           setErrorMessage(message);
           setShowErrorMessage(true);
-          Vibration.vibrate(errorVibrationPattern);
         }
       } catch (error) {
         setIsLoading(false);
         setErrorMessage(error.message || "An error occurred");
         setShowErrorMessage(true);
-        Vibration.vibrate(errorVibrationPattern);
       }
     }
   };

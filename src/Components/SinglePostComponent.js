@@ -21,6 +21,7 @@ import {
   View,
   ActivityIndicator,
   Linking,
+  RefreshControl,
 } from "react-native";
 import Geolocation from "@react-native-community/geolocation";
 import { useDispatch, useSelector } from "react-redux";
@@ -158,6 +159,7 @@ export default function SinglePostComponent({}) {
   const [isPlayingVideo, setIsPlayingVideo] = useState(false);
   const [currentPostImageIndex, setCurrentPostImageIndex] = useState(0);
   const [hasLoadedCache, setHasLoadedCache] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const videoRef = useRef();
 
@@ -174,6 +176,7 @@ export default function SinglePostComponent({}) {
   const POSTS_CACHE_KEY = "cachedPosts_loggedIn";
   const PAGE_SIZE = 9;
   const lastLoadMoreLengthRef = useRef(0);
+  const shouldShuffleRef = useRef(false);
 
   // Helper function to safely set loading state
   const setLoadingState = (loading, title = "", operationId = "") => {
@@ -449,6 +452,26 @@ export default function SinglePostComponent({}) {
     tryGetLocation(true);
   };
 
+  const onRefreshFeed = useCallback(() => {
+    if (isLoadingRef.current) {
+      // Already loading, don't trigger another fetch but still dismiss spinner
+      setIsRefreshing(false);
+      return;
+    }
+    setIsRefreshing(true);
+    shouldShuffleRef.current = true;
+    helperFunctions.clearCachedPosts(POSTS_CACHE_KEY);
+    if (accessToken && userLocation) {
+      // Call getServerPosts directly so refresh works even if loadNewPosts was already true
+      setCurrentIncrementValue(1);
+      getServerPosts();
+    } else {
+      // No credentials/location - dispatch to let effect handle or clear spinner
+      dispatch(setLoadNewPosts(true));
+      setTimeout(() => setIsRefreshing(false), 1000);
+    }
+  }, [dispatch, accessToken, userLocation]);
+
   const getServerPosts = async () => {
     const operationId = "getServerPosts";
     // Prevent concurrent calls
@@ -646,19 +669,33 @@ export default function SinglePostComponent({}) {
         }
       }
       
+      // Shuffle on pull-to-refresh so the user sees a fresh order
+      if (shouldShuffleRef.current && arrPostsWithAllAds.length > 1) {
+        for (let i = arrPostsWithAllAds.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [arrPostsWithAllAds[i], arrPostsWithAllAds[j]] = [arrPostsWithAllAds[j], arrPostsWithAllAds[i]];
+        }
+        shouldShuffleRef.current = false;
+      }
+
       setPostDetails(arrPostsWithAllAds[0]);
       dispatch(setAllPosts(arrPostsWithAllAds)); // This REPLACES all existing posts
       // Save to AsyncStorage cache
       await helperFunctions.saveCachedPosts(arrPostsWithAllAds, POSTS_CACHE_KEY, 10);
-      if (arrPostsWithAllAds.length > 0) {
-        carouselRef.current.scrollToIndex({ index: 0 });
+      if (arrPostsWithAllAds.length > 0 && carouselRef.current) {
+        try {
+          carouselRef.current.scrollToIndex({ index: 0, animated: true });
+        } catch (e) {}
       }
       dispatch(setLoadNewPosts(false)); // Reset flag after loading
       setLoadingState(false, "", operationId);
+      setIsRefreshing(false);
     } catch (err) {
       console.log("Error is", err);
       dispatch(setLoadNewPosts(false));
       setLoadingState(false, "", operationId);
+      setIsRefreshing(false);
+      shouldShuffleRef.current = false;
     }
   };
 
@@ -1563,33 +1600,14 @@ export default function SinglePostComponent({}) {
         }}
         onLoad={() => {}}
       >
-        <DoubleClick
-          customStyle={commonStyles.flexFull}
-          singleTap={() => {}}
-          doubleTap={() => {
-            onLikeUnlikePostPress(item, isLiked);
+        <PanGestureHandler
+          failOffsetY={[-20, 20]}
+          activeOffsetX={[-15, 15]}
+          onHandlerStateChange={(event) => {
+            handleGesture(event, item);
           }}
-          delay={200}
         >
-          <View style={styles.sideTapContainer}>
-            <TouchableOpacity
-              style={styles.leftTap}
-              activeOpacity={1}
-              onPress={() => onPostSideTap("left", item)}
-            />
-            <TouchableOpacity
-              style={styles.rightTap}
-              activeOpacity={1}
-              onPress={() => onPostSideTap("right", item)}
-            />
-          </View>
-          <PanGestureHandler
-            failOffsetY={[-5, 5]}
-            activeOffsetX={[-5, 5]}
-            onHandlerStateChange={(event) => {
-              handleGesture(event, item);
-            }}
-          >
+          <View collapsable={false} style={[commonStyles.flexFull, { backgroundColor: "transparent" }]}>
             <View
               pointerEvents="box-none"
               style={{
@@ -1616,9 +1634,9 @@ export default function SinglePostComponent({}) {
                     onRestaurantImagePress(item);
                   }}
                   style={commonStyles.textWhite(32, {
-                    textShadowColor: colors.black,
-                    textShadowOffset: { width: 5, height: 5 },
-                    textShadowRadius: 10,
+                    textShadowColor: "rgba(0,0,0,0.9)",
+                    textShadowOffset: { width: 0, height: 0 },
+                    textShadowRadius: 15,
                     zIndex: 99,
                   })}
                 >
@@ -1628,10 +1646,8 @@ export default function SinglePostComponent({}) {
                   <View
                     pointerEvents="none"
                     style={{
-                      backgroundColor: "rgba(0,0,0,0.85)",
                       paddingHorizontal: moderateScale(4),
                       paddingVertical: moderateScale(2),
-                      borderRadius: moderateScale(4),
                       alignSelf: "flex-start",
                       marginTop: moderateScale(4),
                       zIndex: 99,
@@ -1640,9 +1656,9 @@ export default function SinglePostComponent({}) {
                     {helperFunctions.getStarRatings(item.restaurantRating)}
                     <Text
                       style={commonStyles.textWhite(18, {
-                        textShadowColor: colors.black,
-                        textShadowOffset: { width: 2, height: 2 },
-                        textShadowRadius: 5,
+                        textShadowColor: "rgba(0,0,0,0.9)",
+                        textShadowOffset: { width: 0, height: 0 },
+                        textShadowRadius: 12,
                         fontWeight: "700",
                         color: colors.white,
                       })}
@@ -1688,9 +1704,9 @@ export default function SinglePostComponent({}) {
                     fontWeight: "400",
                     width: "80%",
                     color: colors.grey,
-                    textShadowColor: colors.black,
-                    textShadowOffset: { width: 5, height: 5 },
-                    textShadowRadius: 10,
+                    textShadowColor: "rgba(0,0,0,0.9)",
+                    textShadowOffset: { width: 0, height: 0 },
+                    textShadowRadius: 12,
                     zIndex: 99,
                   })}
                 >
@@ -1727,9 +1743,9 @@ export default function SinglePostComponent({}) {
                   />
                   <Text
                     style={commonStyles.textWhite(14, {
-                      textShadowColor: colors.black,
-                      textShadowOffset: { width: 5, height: 5 },
-                      textShadowRadius: 10,
+                      textShadowColor: "rgba(0,0,0,0.9)",
+                      textShadowOffset: { width: 0, height: 0 },
+                      textShadowRadius: 12,
                       zIndex: 99,
                     })}
                   >
@@ -1780,9 +1796,9 @@ export default function SinglePostComponent({}) {
                   />
                   <Text
                     style={commonStyles.textWhite(14, {
-                      textShadowColor: colors.black,
-                      textShadowOffset: { width: 5, height: 5 },
-                      textShadowRadius: 10,
+                      textShadowColor: "rgba(0,0,0,0.9)",
+                      textShadowOffset: { width: 0, height: 0 },
+                      textShadowRadius: 12,
                       zIndex: 99,
                     })}
                   >
@@ -1791,8 +1807,20 @@ export default function SinglePostComponent({}) {
                 </View>
               </View>
             </View>
-          </PanGestureHandler>
-        </DoubleClick>
+            <View style={styles.sideTapContainer} pointerEvents="box-none">
+              <TouchableOpacity
+                style={styles.leftTap}
+                activeOpacity={1}
+                onPress={() => onPostSideTap("left", item)}
+              />
+              <TouchableOpacity
+                style={styles.rightTap}
+                activeOpacity={1}
+                onPress={() => onPostSideTap("right", item)}
+              />
+            </View>
+          </View>
+        </PanGestureHandler>
       </ImageBackground>
     );
   };
@@ -1925,28 +1953,14 @@ export default function SinglePostComponent({}) {
           backgroundColor: "transparent",
         }}
       >
-        <DoubleClick
-          customStyle={commonStyles.flexFull}
-          singleTap={() => {
-            item &&
-              item.file &&
-              item.file.length > 0 &&
-              item.file[0] &&
-              item.file[0].type == "video" &&
-              onVideoPress(item.isPaused);
+        <PanGestureHandler
+          failOffsetY={[-20, 20]}
+          activeOffsetX={[-15, 15]}
+          onHandlerStateChange={(event) => {
+            handleGesture(event, item);
           }}
-          doubleTap={() => {
-            likeUnlikeInAppPosts(item, isLiked);
-          }}
-          delay={200}
         >
-          <PanGestureHandler
-            failOffsetY={[-5, 5]}
-            activeOffsetX={[-5, 5]}
-            onHandlerStateChange={(event) => {
-              handleGesture(event, item);
-            }}
-          >
+          <View collapsable={false} style={[commonStyles.flexFull, { backgroundColor: "transparent" }]}>
             <View style={commonStyles.flexFull}>
               <View style={styles.videoPostDetailsContainer}>
                 <Text
@@ -2040,9 +2054,9 @@ export default function SinglePostComponent({}) {
                   />
                   <Text
                     style={commonStyles.textWhite(14, {
-                      textShadowColor: colors.black,
-                      textShadowOffset: { width: 5, height: 5 },
-                      textShadowRadius: 10,
+                      textShadowColor: "rgba(0,0,0,0.9)",
+                      textShadowOffset: { width: 0, height: 0 },
+                      textShadowRadius: 12,
                       zIndex: 99,
                     })}
                   >
@@ -2158,21 +2172,21 @@ export default function SinglePostComponent({}) {
                   style={{ height: componentHeight, width: windowWidth }}
                 ></Image>
               )}
-              <View style={styles.sideTapContainer}>
-                <TouchableOpacity
-                  style={styles.leftTap}
-                  activeOpacity={1}
-                  onPress={() => onPostSideTap("left", item)}
-                />
-                <TouchableOpacity
-                  style={styles.rightTap}
-                  activeOpacity={1}
-                  onPress={() => onPostSideTap("right", item)}
-                />
-              </View>
             </View>
-          </PanGestureHandler>
-        </DoubleClick>
+            <View style={styles.sideTapContainer} pointerEvents="box-none">
+              <TouchableOpacity
+                style={styles.leftTap}
+                activeOpacity={1}
+                onPress={() => onPostSideTap("left", item)}
+              />
+              <TouchableOpacity
+                style={styles.rightTap}
+                activeOpacity={1}
+                onPress={() => onPostSideTap("right", item)}
+              />
+            </View>
+          </View>
+        </PanGestureHandler>
       </View>
     );
   };
@@ -2384,6 +2398,14 @@ export default function SinglePostComponent({}) {
         pagingEnabled={true}
         keyExtractor={listKeyExtractor}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={onRefreshFeed}
+            tintColor={colors.appPrimary}
+            colors={[colors.appPrimary]}
+          />
+        }
         onLayout={(event) => {
           setComponentHeight(event.nativeEvent.layout.height);
         }}
@@ -3062,17 +3084,21 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    flexDirection: "row",
-    zIndex: 10,
+    zIndex: 15,
+    pointerEvents: "box-none",
   },
   leftTap: {
+    position: "absolute",
+    top: "10%",
+    left: 0,
     width: "30%",
-    height: "100%",
+    height: "55%",
   },
   rightTap: {
-    width: "30%",
-    height: "100%",
     position: "absolute",
+    top: "10%",
     right: 0,
+    width: "30%",
+    height: "55%",
   },
 });

@@ -404,9 +404,6 @@ export default function ProfileScreen(props) {
   };
 
   const onSlideChange = () => {
-    if (isVibrationEnabled) {
-      Vibration.vibrate(VIBRATION_PATTERN);
-    }
   };
 
   const RenderFavorites = (props) => {

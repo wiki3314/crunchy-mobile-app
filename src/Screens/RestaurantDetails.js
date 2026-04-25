@@ -15,6 +15,7 @@ import {
   FlatList,
   TouchableWithoutFeedback,
   Animated,
+  Pressable,
 } from "react-native";
 import { commonStyles } from "../Constants/commonStyles";
 import {
@@ -1070,24 +1071,23 @@ export default function RestaurantDetails(props) {
         transparent={true}
         onRequestClose={showHideMediaComponent}
       >
-        <View
+        <Pressable
           style={{
             flex: 1,
             backgroundColor: "#000000aa",
             justifyContent: "center",
             alignItems: "center",
           }}
-          onPress={(event) =>
-            event.target == event.currentTarget && showHideMediaComponent()
-          }
+          onPress={showHideMediaComponent}
         >
-          <View
+          <Pressable
             style={{
               backgroundColor: colors.white,
               height: windowHeight * 0.8,
               width: windowWidth - moderateScale(16),
               borderRadius: moderateScale(8),
             }}
+            onPress={() => {}}
           >
             <Carousel
               data={photoRef}
@@ -1103,8 +1103,8 @@ export default function RestaurantDetails(props) {
               pagingEnabled={true}
               keyExtractor={(item, index) => `photo-${index}`}
             />
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
     </SafeAreaView>
   );

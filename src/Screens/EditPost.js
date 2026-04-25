@@ -99,30 +99,18 @@ export default function EditPost(props) {
         if (title == '') {
             setErrorMessage("Post title can't be empty")
             setShowErrorMessage(true)
-            if (isVibrationEnabled) {
-                Vibration.vibrate(errorVibrationPattern)
-            }
         }
         else if (ratingCount == 0) {
             setErrorMessage("Rating is missing")
             setShowErrorMessage(true)
-            if (isVibrationEnabled) {
-                Vibration.vibrate(errorVibrationPattern)
-            }
         }
         else if (selectedCategory == -1) {
             setErrorMessage("No Category selected")
             setShowErrorMessage(true)
-            if (isVibrationEnabled) {
-                Vibration.vibrate(errorVibrationPattern)
-            }
         }
         else if (review == '') {
             setErrorMessage("Post review is missing")
             setShowErrorMessage(true)
-            if (isVibrationEnabled) {
-                Vibration.vibrate(errorVibrationPattern)
-            }
         }
         else {
             setIsLoading(true)

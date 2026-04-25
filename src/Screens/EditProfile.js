@@ -151,9 +151,6 @@ export default function EditProfile(props) {
       updatedUserDetails.full_name = fullName;
       dispatch(setUserData(updatedUserDetails));
       setIsLoading(false);
-      if (isVibrationEnabled) {
-        Vibration.vibrate([0, 100, 60, 150]);
-      }
       setShowCustomToast(true);
     }
   };
