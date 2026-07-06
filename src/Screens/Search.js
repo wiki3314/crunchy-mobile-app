@@ -52,7 +52,7 @@ import {
 } from "../Redux/actions/actions";
 import { navigationStrings } from "../Navigation/NavigationStrings";
 import { useEffect } from "react";
-import { ScrollView } from "react-native-gesture-handler";
+import { ScrollView, PanGestureHandler } from "react-native-gesture-handler";
 import FontAwesome from "react-native-vector-icons/FontAwesome";
 import { helperFunctions } from "../Constants/helperFunctions";
 import Ionicons from "react-native-vector-icons/Ionicons";
@@ -1046,13 +1046,26 @@ export default function Search(props) {
   useEffect(() => {
     // clearUserSearchValue()
   }, []);
+
+  // Right-to-left swipe → navigate back to Home (mirror of Home's left-to-right → Search).
+  // Works for both logged-in and guest users since this Search screen is shared between
+  // MainStack and AuthStack navigators.
+  const handleSearchSwipe = (event) => {
+    if (event.nativeEvent.state == 5) {
+      if (event.nativeEvent.translationX < -50) {
+        navigation.navigate(navigationStrings.HomeScreen);
+      }
+    }
+  };
+
   return (
-    <SafeAreaView
+    <View
       style={[
         commonStyles.flexFull,
         { backgroundColor: currentThemePrimaryColor },
       ]}
     >
+    <SafeAreaView style={commonStyles.flexFull}>
       <Modal
         animationType="slide"
         transparent={true}
@@ -1103,6 +1116,12 @@ export default function Search(props) {
       <View style={commonStyles.fullScreenContainer}>
         {isLoading && <LoadingComponent title={loaderTitle} />}
         <ScrollView showsVerticalScrollIndicator={false}>
+          <PanGestureHandler
+            failOffsetY={[-20, 20]}
+            activeOffsetX={[-15, 15]}
+            onHandlerStateChange={handleSearchSwipe}
+          >
+            <View>
           <View style={styles.titleFullContainer}>
             <View style={styles.titleInnerContainer}>
               {userData && userData.full_name ? (
@@ -1242,6 +1261,8 @@ export default function Search(props) {
             </Text>
             <FontAwesome name="random" style={styles.randomButtonIcon} />
           </TouchableOpacity>
+            </View>
+          </PanGestureHandler>
           <View style={commonStyles.flexFull}>
             {displayedFoodCategories && displayedFoodCategories.length > 0 ? (
               <AppIntroSlider
@@ -1385,6 +1406,7 @@ export default function Search(props) {
         />
       )}
     </SafeAreaView>
+    </View>
   );
 }
 
@@ -1415,6 +1437,9 @@ const styles = StyleSheet.create({
   },
   singlePinContainer: (currentColor) => {
     return {
+
+
+      
       fontSize: 20,
       color: currentColor,
     };

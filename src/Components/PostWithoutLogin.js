@@ -192,17 +192,22 @@ export default function PostWithoutLogin() {
     tryGetLocation(true);
   };
 
-  async function getPostsWithoutLogin(isLoadMore = false) {
+  async function getPostsWithoutLogin(isLoadMore = false, isFromRefresh = false) {
     if (
       !userLocation ||
       !userLocation.latitude ||
       !userLocation.longitude
     ) {
       console.error("❌ PostWithoutLogin: User location not available");
-      dispatch(setPostsWithoutLogin([]));
+      // Only clear posts if there are no existing posts (avoid blanking screen during refresh)
+      if (allPostsRef.current.length === 0) {
+        dispatch(setPostsWithoutLogin([]));
+      }
       if (!isLoadMore) {
         setIsLoading(false);
       }
+      setIsRefreshing(false);
+      shouldShuffleRefGuest.current = false;
       return;
     }
 
@@ -215,8 +220,13 @@ export default function PostWithoutLogin() {
         return;
       }
       setLoadingMorePosts(true);
-    } else {
+    } else if (!isFromRefresh) {
+      // Only show full-screen loading overlay for initial loads, not for pull-to-refresh
+      // (RefreshControl spinner provides feedback for refresh)
       setIsLoading(true);
+      setAllDataLoaded(false);
+      setShowEndMessage(false);
+    } else {
       setAllDataLoaded(false);
       setShowEndMessage(false);
     }
@@ -240,7 +250,7 @@ export default function PostWithoutLogin() {
       const limitedPosts = rawPosts.slice(0, PAGE_SIZE);
 
       if (limitedPosts.length === 0 && !isLoadMore && rawPosts.length === 0) {
-        
+
         // ✅ Only show blocking alert if we don't have any existing posts visible
         if (allPostsRef.current.length === 0) {
           dispatch(setPostsWithoutLogin([]));
@@ -260,10 +270,11 @@ export default function PostWithoutLogin() {
             ]
           );
         } else {
-          // If we already have posts, just show a non-blocking toast
+          // If we already have posts, just keep them visible (silent fail on refresh)
           setIsLoading(false);
-          // Toast is handled by SinglePostComponent usually but here we might need one or just silent fail
         }
+        setIsRefreshing(false);
+        shouldShuffleRefGuest.current = false;
         return;
       }
 
@@ -345,13 +356,21 @@ export default function PostWithoutLogin() {
     }
   }
 
+  // Keep a ref to the latest getPostsWithoutLogin so the refresh callback
+  // doesn't get stuck with a first-render closure (which captured undefined location, etc).
+  const getPostsRef = useRef();
+  getPostsRef.current = getPostsWithoutLogin;
+
   const onRefreshFeedGuest = useCallback(() => {
     setIsRefreshing(true);
     shouldShuffleRefGuest.current = true;
     helperFunctions.clearCachedPosts(POSTS_CACHE_KEY_GUEST);
     setNextPageToken(null);
     lastLoadMoreLengthRefGuest.current = 0;
-    getPostsWithoutLogin(false);
+    // Use the ref so we always call the current closure with up-to-date state
+    if (getPostsRef.current) {
+      getPostsRef.current(false, true);
+    }
   }, []);
 
   const searchQuickBitesPlaces = async () => {
@@ -662,7 +681,7 @@ export default function PostWithoutLogin() {
             .map((item) => {
               let restaurantImage = null;
               if (item.google_photo_reference) {
-                restaurantImage = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${item.google_photo_reference}&key=AIzaSyCLb-WobrzT3gvpXDLkNYPWbIpd30bxKLQ`;
+                restaurantImage = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${item.google_photo_reference}&key=${GOOGLE_API_KEY}`;
               } else if (item.image) {
                 restaurantImage = item.image;
               }
@@ -751,10 +770,11 @@ export default function PostWithoutLogin() {
     console.log("🚀 Starting Google Sign-in...");
     // iosClientId MUST match ios/GoogleService-Info.plist CLIENT_ID & Info.plist URL scheme
     GoogleSignin.configure({
+      webClientId:
+        "887856847210-ije9nsemfsp7v2mbolkjq4o18gnlncvv.apps.googleusercontent.com",
       iosClientId:
         "887856847210-ahbpunrbi25qs6tnh0taksm298nkqdm4.apps.googleusercontent.com",
-      androidClientId:
-        "887856847210-kn6g0ggbduj48m2qpgntaog0bfmmp0os.apps.googleusercontent.com",
+      offlineAccess: true,
     });
     GoogleSignin.hasPlayServices()
       .then((hasPlayService) => {
@@ -784,7 +804,7 @@ export default function PostWithoutLogin() {
     LoginManager.logInWithPermissions([
       "public_profile",
       "email",
-      "user_friends",
+    //  "user_friends",
     ])
       .then((result) => {
         console.log("result for the facebook ", result);
@@ -967,7 +987,7 @@ export default function PostWithoutLogin() {
               // Construct Google image URL if photo reference exists
               let restaurantImage = null;
               if (item.google_photo_reference) {
-                restaurantImage = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${item.google_photo_reference}&key=AIzaSyCLb-WobrzT3gvpXDLkNYPWbIpd30bxKLQ`;
+                restaurantImage = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${item.google_photo_reference}&key=${GOOGLE_API_KEY}`;
               } else if (item.image) {
                 restaurantImage = item.image;
               }
@@ -1244,14 +1264,6 @@ export default function PostWithoutLogin() {
                         "❌ Small Image error:",
                         error.nativeEvent?.error
                       );
-                      console.error(
-                        "❌ Item restaurantImage:",
-                        item?.restaurantImage?.substring(0, 100)
-                      );
-                      console.error(
-                        "❌ Full photo_reference length:",
-                        item?.restaurantImage?.length
-                      );
                     }}
                     onLoad={() => {}}
                     onLoadStart={() => {}}
@@ -1276,16 +1288,17 @@ export default function PostWithoutLogin() {
               <View
                 pointerEvents="box-none"
                 style={{
-                  minHeight: moderateScale(100),
                   width: windowWidth * 0.7,
-                  padding: moderateScale(5),
+                  paddingLeft: moderateScale(8),
+                  paddingRight: moderateScale(5),
                   position: "absolute",
                   left: moderateScale(0),
-                  bottom: windowHeight * 0.1,
+                  bottom: windowHeight * 0.4,
                   zIndex: 21,
                 }}
               >
                 <Text
+                  numberOfLines={2}
                   style={commonStyles.textWhite(20, {
                     fontWeight: "bold",
                     width: "85%",
@@ -1300,8 +1313,6 @@ export default function PostWithoutLogin() {
                   <View
                     pointerEvents="none"
                     style={{
-                      paddingHorizontal: moderateScale(4),
-                      paddingVertical: moderateScale(2),
                       alignSelf: "flex-start",
                       marginTop: moderateScale(4),
                     }}
@@ -1309,6 +1320,7 @@ export default function PostWithoutLogin() {
                     {helperFunctions.getStarRatings(item.restaurantRating)}
                     <Text
                       style={commonStyles.textWhite(18, {
+                        marginTop: moderateScale(4),
                         textShadowColor: "rgba(0,0,0,0.9)",
                         textShadowOffset: { width: 0, height: 0 },
                         textShadowRadius: 12,
@@ -1350,19 +1362,21 @@ export default function PostWithoutLogin() {
                     </Text>
                   </View>
                 ) : null} */}
-                <Text
-                  numberOfLines={4}
-                  style={commonStyles.textWhite(14, {
-                    fontWeight: "400",
-                    width: "80%",
-                    color: colors.grey,
-                    textShadowColor: "rgba(0,0,0,0.9)",
-                    textShadowOffset: { width: 0, height: 0 },
-                    textShadowRadius: 12,
-                  })}
-                >
-                  {item && item.review}
-                </Text>
+                {item && item.review ? (
+                  <Text
+                    numberOfLines={2}
+                    style={commonStyles.textWhite(14, {
+                      fontWeight: "400",
+                      width: "80%",
+                      color: colors.grey,
+                      textShadowColor: "rgba(0,0,0,0.9)",
+                      textShadowOffset: { width: 0, height: 0 },
+                      textShadowRadius: 12,
+                    })}
+                  >
+                    {item.review}
+                  </Text>
+                ) : null}
               </View>
             </View>
             </View>
@@ -1522,6 +1536,7 @@ export default function PostWithoutLogin() {
       {showEndMessage && !loadingMorePosts && (
         <View
           style={{
+            
             height: moderateScale(40),
             width: windowWidth,
             position: "absolute",
@@ -1642,7 +1657,6 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   commentSectionContainer: {
-    minHeight: moderateScale(100),
     width: moderateScale(40),
     position: "absolute",
     right: moderateScale(0),

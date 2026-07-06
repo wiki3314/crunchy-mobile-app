@@ -186,8 +186,8 @@ export default function EditProfile(props) {
     let isGoogleLogin = await GoogleSignin.isSignedIn();
     if (isGoogleLogin) {
       GoogleSignin.configure({
-        androidClientId:
-          "887856847210-qevj4lnpjt84q0sqppgted93lp1f1suf.apps.googleusercontent.com",
+        webClientId:
+          "887856847210-ije9nsemfsp7v2mbolkjq4o18gnlncvv.apps.googleusercontent.com",
         iosClientId:
           "887856847210-ahbpunrbi25qs6tnh0taksm298nkqdm4.apps.googleusercontent.com",
       });

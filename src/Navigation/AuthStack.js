@@ -49,7 +49,10 @@ const AuthBottomNavigation = () => {
   function HomeTabItem(props) {
     return (
       <Pressable
-        onPress={changeModalState}
+        onPress={() => {
+          // Navigate to Home screen — guest users can browse the feed
+          navigation.navigate(navigationStrings.HomeScreen);
+        }}
         style={[styles.tabItem, { backgroundColor: currentThemePrimaryColor }]}
       >
         <Foundation
@@ -281,10 +284,6 @@ export const AuthorizationStack = () => {
       <AuthStack.Screen
         name={navigationStrings.TermsAndConditionsScreen}
         component={TermsAndConditions}
-      />
-      <AuthStack.Screen
-        name={navigationStrings.SearchScreen}
-        component={Search}
       />
       <AuthStack.Screen
         name={navigationStrings.ProfileScreen}

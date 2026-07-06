@@ -3,6 +3,7 @@ import {
   Alert,
   Animated,
   Easing,
+  FlatList,
   Image,
   ImageBackground,
   Keyboard,
@@ -45,7 +46,6 @@ import PressableImage from "./PressableImage";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { navigationStrings } from "../Navigation/NavigationStrings";
 import {
-  FlatList,
   GestureDetector,
   GestureHandlerRootView,
   PanGestureHandler,
@@ -86,11 +86,19 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import DoubleClick from "./DoubleClick";
 import CommonButton from "./CommonButton";
 
-// Google AdMob Banner Ad IDs (test IDs from old project)
-const bannerAdId =
+// Google AdMob Banner Ad IDs.
+// In __DEV__ we use Google's official public test unit IDs so impressions
+// during development don't count against the real account or risk a policy
+// violation. Release builds use the production ad units from AdMob console.
+const TEST_BANNER_AD_ID =
   Platform.OS == "android"
     ? "ca-app-pub-3940256099942544/6300978111"
     : "ca-app-pub-3940256099942544/2934735716";
+const PROD_BANNER_AD_ID =
+  Platform.OS == "android"
+    ? "ca-app-pub-8426298054726789/4881281307"
+    : "ca-app-pub-8426298054726789/5152744042";
+const bannerAdId = __DEV__ ? TEST_BANNER_AD_ID : PROD_BANNER_AD_ID;
 import Share from "react-native-share";
 const RNFS = require("react-native-fs");
 
@@ -452,6 +460,13 @@ export default function SinglePostComponent({}) {
     tryGetLocation(true);
   };
 
+  // Keep refs to latest function and state so the refresh callback always sees current values
+  const getServerPostsRef = useRef();
+  const accessTokenRef = useRef(accessToken);
+  const userLocationRef = useRef(userLocation);
+  accessTokenRef.current = accessToken;
+  userLocationRef.current = userLocation;
+
   const onRefreshFeed = useCallback(() => {
     if (isLoadingRef.current) {
       // Already loading, don't trigger another fetch but still dismiss spinner
@@ -461,18 +476,22 @@ export default function SinglePostComponent({}) {
     setIsRefreshing(true);
     shouldShuffleRef.current = true;
     helperFunctions.clearCachedPosts(POSTS_CACHE_KEY);
-    if (accessToken && userLocation) {
-      // Call getServerPosts directly so refresh works even if loadNewPosts was already true
+    if (accessTokenRef.current && userLocationRef.current && getServerPostsRef.current) {
+      // Call getServerPosts directly with isFromRefresh=true so we don't show
+      // the full-screen LoadingComponent overlay on top of RefreshControl spinner
       setCurrentIncrementValue(1);
-      getServerPosts();
+      getServerPostsRef.current(true);
     } else {
       // No credentials/location - dispatch to let effect handle or clear spinner
       dispatch(setLoadNewPosts(true));
-      setTimeout(() => setIsRefreshing(false), 1000);
+      setTimeout(() => {
+        setIsRefreshing(false);
+        shouldShuffleRef.current = false;
+      }, 1000);
     }
-  }, [dispatch, accessToken, userLocation]);
+  }, [dispatch]);
 
-  const getServerPosts = async () => {
+  const getServerPosts = async (isFromRefresh = false) => {
     const operationId = "getServerPosts";
     // Prevent concurrent calls
     if (isLoadingRef.current && loadingOperationsRef.current.has(operationId)) {
@@ -492,6 +511,8 @@ export default function SinglePostComponent({}) {
       console.error("❌ getServerPosts: User location not available");
       dispatch(setLoadNewPosts(false));
       setLoadingState(false, "", operationId);
+      setIsRefreshing(false);
+      shouldShuffleRef.current = false;
       return;
     }
 
@@ -499,11 +520,20 @@ export default function SinglePostComponent({}) {
       console.error("❌ getServerPosts: Access token not available");
       dispatch(setLoadNewPosts(false));
       setLoadingState(false, "", operationId);
+      setIsRefreshing(false);
+      shouldShuffleRef.current = false;
       return;
     }
-    
+
     try {
-      setLoadingState(true, "Searching for yummy restaurants", operationId);
+      // Skip full-screen LoadingComponent overlay during pull-to-refresh
+      // (RefreshControl spinner already provides visual feedback)
+      if (!isFromRefresh) {
+        setLoadingState(true, "Searching for yummy restaurants", operationId);
+      } else {
+        // Still register the operation for concurrency tracking, just don't show overlay
+        loadingOperationsRef.current.add(operationId);
+      }
       
       // Always use user's location and saved radius
       const radiusInMiles = savedPostsRadius || 20; // Default to 20 miles if not set
@@ -698,6 +728,10 @@ export default function SinglePostComponent({}) {
       shouldShuffleRef.current = false;
     }
   };
+
+  // Always keep the ref pointed to the latest getServerPosts so onRefreshFeed
+  // (which is memoized) calls the up-to-date closure with current state.
+  getServerPostsRef.current = getServerPosts;
 
   async function getNewPosts() {
     if (showLoadingMorePosts) {
@@ -1415,7 +1449,7 @@ export default function SinglePostComponent({}) {
           {
             link: `http://invertase.io/` + sharedLink,
             android: {
-              packageName: "com.crunchy",
+              packageName: "com.crunchii",
             },
             ios: {
               bundleId: "com.crunchy",
@@ -1620,20 +1654,21 @@ export default function SinglePostComponent({}) {
               <View
                 pointerEvents="box-none"
                 style={{
-                  minHeight: moderateScale(100),
                   width: windowWidth * 0.7,
-                  padding: moderateScale(5),
+                  paddingLeft: moderateScale(8),
+                  paddingRight: moderateScale(5),
                   position: "absolute",
                   left: moderateScale(0),
-                  bottom: windowHeight * 0.2,
+                  bottom: windowHeight * 0.4,
                   zIndex: 21,
                 }}
               >
                 <Text
+                  numberOfLines={2}
                   onPress={() => {
                     onRestaurantImagePress(item);
                   }}
-                  style={commonStyles.textWhite(32, {
+                  style={commonStyles.textWhite(28, {
                     textShadowColor: "rgba(0,0,0,0.9)",
                     textShadowOffset: { width: 0, height: 0 },
                     textShadowRadius: 15,
@@ -1646,8 +1681,6 @@ export default function SinglePostComponent({}) {
                   <View
                     pointerEvents="none"
                     style={{
-                      paddingHorizontal: moderateScale(4),
-                      paddingVertical: moderateScale(2),
                       alignSelf: "flex-start",
                       marginTop: moderateScale(4),
                       zIndex: 99,
@@ -1656,6 +1689,7 @@ export default function SinglePostComponent({}) {
                     {helperFunctions.getStarRatings(item.restaurantRating)}
                     <Text
                       style={commonStyles.textWhite(18, {
+                        marginTop: moderateScale(4),
                         textShadowColor: "rgba(0,0,0,0.9)",
                         textShadowOffset: { width: 0, height: 0 },
                         textShadowRadius: 12,
@@ -1698,30 +1732,28 @@ export default function SinglePostComponent({}) {
                     </Text>
                   </View>
                 ) : null} */}
-                <Text
-                  numberOfLines={4}
-                  style={commonStyles.textWhite(14, {
-                    fontWeight: "400",
-                    width: "80%",
-                    color: colors.grey,
-                    textShadowColor: "rgba(0,0,0,0.9)",
-                    textShadowOffset: { width: 0, height: 0 },
-                    textShadowRadius: 12,
-                    zIndex: 99,
-                  })}
-                >
-                  {item && item.review}
-                </Text>
+                {item && item.review ? (
+                  <Text
+                    numberOfLines={2}
+                    style={commonStyles.textWhite(14, {
+                      fontWeight: "400",
+                      width: "80%",
+                      color: colors.grey,
+                      textShadowColor: "rgba(0,0,0,0.9)",
+                      textShadowOffset: { width: 0, height: 0 },
+                      textShadowRadius: 12,
+                      zIndex: 99,
+                    })}
+                  >
+                    {item.review}
+                  </Text>
+                ) : null}
               </View>
               <View
                 pointerEvents="box-none"
                 style={{
-                  minHeight: moderateScale(100),
                   minWidth: moderateScale(40),
-                  // padding: moderateScale(5),
-                  marginBottom: moderateScale(5),
                   position: "absolute",
-                  // left: windowWidth * 0.6,
                   right: moderateScale(0),
                   bottom: windowHeight * 0.2,
                   alignItems: "center",

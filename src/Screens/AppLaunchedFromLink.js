@@ -334,7 +334,7 @@ export default function AppLaunchedFromLink(props) {
     let objRestaurant = {
       restaurant_id: restaurant_id,
       restaurantName: restaurantName,
-      restaurantImage: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${photoRef[0].photo_reference}&key=AIzaSyCLb-WobrzT3gvpXDLkNYPWbIpd30bxKLQ`,
+      restaurantImage: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${photoRef[0].photo_reference}&key=${GOOGLE_API_KEY}`,
     };
     console.log("🍽️ Saving restaurant from link:", restaurantDetails);
     await apiHandler.likeRestaurant(restaurantDetails, accessToken);

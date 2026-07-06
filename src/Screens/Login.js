@@ -17,6 +17,7 @@ import { colors } from "../Constants/colors";
 import { commonStyles } from "../Constants/commonStyles";
 import {
   errorVibrationPattern,
+  GOOGLE_API_KEY,
   moderateScale,
   userSuccessPattern,
   windowHeight,
@@ -366,7 +367,7 @@ export default function Login(props) {
       const favoriteRestaurants = (likedRestaurantsRes.value || [])
         .map((item) => {
           let restaurantImage = item.google_photo_reference 
-            ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${item.google_photo_reference}&key=AIzaSyCLb-WobrzT3gvpXDLkNYPWbIpd30bxKLQ`
+            ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${item.google_photo_reference}&key=${GOOGLE_API_KEY}`
             : item.image || null;
 
           const restaurantId = item.google_place_id || item.restaurant_id || item.id;

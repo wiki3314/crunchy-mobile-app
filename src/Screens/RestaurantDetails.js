@@ -1080,30 +1080,31 @@ export default function RestaurantDetails(props) {
           }}
           onPress={showHideMediaComponent}
         >
-          <Pressable
-            style={{
-              backgroundColor: colors.white,
-              height: windowHeight * 0.8,
-              width: windowWidth - moderateScale(16),
-              borderRadius: moderateScale(8),
-            }}
-            onPress={() => {}}
-          >
-            <Carousel
-              data={photoRef}
-              renderItem={renderRestaurantImages}
-              sliderWidth={windowWidth - moderateScale(16)}
-              itemWidth={windowWidth - moderateScale(16)}
-              firstItem={currentSlideIndex}
-              onSnapToItem={(index) => {
-                setCurrentSlideIndex(index);
+          <TouchableWithoutFeedback onPress={() => {}}>
+            <View
+              style={{
+                backgroundColor: colors.white,
+                height: windowHeight * 0.8,
+                width: windowWidth - moderateScale(16),
+                borderRadius: moderateScale(8),
               }}
-              enableSnap={true}
-              enableMomentum={true}
-              pagingEnabled={true}
-              keyExtractor={(item, index) => `photo-${index}`}
-            />
-          </Pressable>
+            >
+              <Carousel
+                data={photoRef}
+                renderItem={renderRestaurantImages}
+                sliderWidth={windowWidth - moderateScale(16)}
+                itemWidth={windowWidth - moderateScale(16)}
+                firstItem={currentSlideIndex}
+                onSnapToItem={(index) => {
+                  setCurrentSlideIndex(index);
+                }}
+                enableSnap={true}
+                enableMomentum={true}
+                pagingEnabled={true}
+                keyExtractor={(item, index) => `photo-${index}`}
+              />
+            </View>
+          </TouchableWithoutFeedback>
         </Pressable>
       </Modal>
     </SafeAreaView>

@@ -19,13 +19,7 @@ export const VIBRATION_PATTERN = [0, 40];
 
 export const ratingsData = [1, 2, 3, 4, 5];
 
-// Production / local backend URL
-const BACKEND_BASE_URL = "http://54.193.173.26:3000"; // Old production IP
-// const BACKEND_BASE_URL = "http://192.168.100.14:3000"; // Old real device IP (port 3000)
-// const BACKEND_BASE_URL = "http://localhost:3000"; // iOS Simulator (local backend on 3000)
-// Current backend (NGROK):
-//const BACKEND_BASE_URL = "https://allison-avulsed-unneatly.ngrok-free.dev";
-//const BACKEND_BASE_URL = "http://54.193.173.26:3000";
+const BACKEND_BASE_URL = "https://api.crunchiiapp.com";
 
 export const POSTS_IMAGE_BASE_URL = `${BACKEND_BASE_URL}/storage/`;
 
@@ -35,7 +29,10 @@ export const USER_PROFILE_BASE_URL = `${BACKEND_BASE_URL}/storage/user/`;
 
 export const ADVERTISEMENTS_BASE_URL = `${BACKEND_BASE_URL}/storage/video/`;
 
-export const GOOGLE_API_KEY = "AIzaSyCLb-WobrzT3gvpXDLkNYPWbIpd30bxKLQ";
+
+export const GOOGLE_API_KEY = "AIzaSyAEwsaP-S1K61Qm_2MhushVAgiGhq5tTk4";
+
+
 
 // ⚠️ TEMPORARY: Set to true to use mock data when Google API billing is not enabled
 // Set to false once you enable billing on Google Cloud Console
